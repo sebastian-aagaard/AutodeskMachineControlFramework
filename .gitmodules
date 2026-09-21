@@ -52,3 +52,6 @@
 [submodule "submodules/swagger-ui"]
 	path = submodules/swagger-ui
 	url = https://github.com/swagger-api/swagger-ui.git
+[submodule "AMCF_ControllerBox"]
+	path = AMCF_ControllerBox
+	url = https://github.com/sebastian-aagaard/AMCF_ControllerBox.git
