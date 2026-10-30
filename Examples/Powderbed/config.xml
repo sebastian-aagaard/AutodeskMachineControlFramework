@@ -91,17 +91,17 @@
 		</parametergroup>
 
 		<parametergroup name="configuration" description="Machine Configuration">
-			<parameter name="simulatelaser" description="Simulate laser control" default="1" type="bool" configschema="com.autodesk.powderbed" configpath="Simulation/SimulateLaser" />
+			<parameter name="simulatelaser" description="Simulate laser control" default="0" type="bool" configschema="com.autodesk.powderbed" configpath="Simulation/SimulateLaser" />
 		</parametergroup>
 
 		<!-- Scanlab scanner card settings, mirrored from the machine configuration (ScannerCard/*).
 		     The laser state machine reads them through derived parameters at initialisation. -->
 		<parametergroup name="cardconfig" description="Scanner Card Config">
-			<parameter name="serial" description="Serial" default="20065509" type="int" configschema="com.autodesk.powderbed" configpath="ScannerCard/Serial"/>
-			<parameter name="ipaddress" description="Scanner Ethernet Address" default="141.60.143.95" type="string" configschema="com.autodesk.powderbed" configpath="ScannerCard/IPAddress"/>
-			<parameter name="netmask" description="Scanner Netmask" default="255.255.255.0" type="string" configschema="com.autodesk.powderbed" configpath="ScannerCard/Netmask"/>
-			<parameter name="port" description="Port" default="49374" type="int" configschema="com.autodesk.powderbed" configpath="ScannerCard/Port"/>
-			<parameter name="timeout" description="Connection timeout" default="1000" type="int" configschema="com.autodesk.powderbed" configpath="ScannerCard/Timeout"/>
+			<parameter name="serial" description="Serial" default="308886" type="int" configschema="com.autodesk.powderbed" configpath="ScannerCard/Serial"/>
+			<parameter name="ipaddress" description="Scanner Ethernet Address" default="10.217.5.1" type="string" configschema="com.autodesk.powderbed" configpath="ScannerCard/IPAddress"/>
+			<parameter name="netmask" description="Scanner Netmask" default="255.255.0.0" type="string" configschema="com.autodesk.powderbed" configpath="ScannerCard/Netmask"/>
+			<parameter name="port" description="Port" default="16" type="int" configschema="com.autodesk.powderbed" configpath="ScannerCard/Port"/>
+			<parameter name="timeout" description="Connection timeout" default="5000" type="int" configschema="com.autodesk.powderbed" configpath="ScannerCard/Timeout"/>
 			<parameter name="laserondelay" description="Laser On Delay in microseconds" default="100" type="double" configschema="com.autodesk.powderbed" configpath="ScannerCard/LaserOnDelay"/>
 			<parameter name="laseroffdelay" description="Laser Off Delay in microseconds" default="100" type="double" configschema="com.autodesk.powderbed" configpath="ScannerCard/LaserOffDelay"/>
 			<parameter name="markdelay" description="Mark Delay in microseconds" default="570" type="double" configschema="com.autodesk.powderbed" configpath="ScannerCard/MarkDelay"/>
@@ -290,7 +290,7 @@
 
 
 		<parametergroup name="correction" description="Scanlab Correction Data">
-			<parameter name="resourcename" description="Correction resource name" default="d2_720r_p" type="string"/>
+			<parameter name="resourcename" description="Correction resource name" default="cor_1to1" type="string"/>
 			<parameter name="tableindex" description="Correction table index" default="1" type="int"/>
 			<parameter name="dimension" description="Correction file dimension" default="3" type="int"/>
 			<parameter name="tablenumbera" description="Table number head A" default="1" type="int"/>
