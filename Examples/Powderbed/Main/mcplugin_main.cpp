@@ -50,6 +50,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    execution_waiting --(signal_finishexecution)--> finishexecution -> idle
    execution_waiting --(cancel / watchdog)--> cancelexecution -> idle
    execution_waiting --(signal_keepalive)--> re-arms the watchdog, stays waiting
+   execution_waiting --(automode enabled & delay elapsed)--> exposes the next layer itself
+
    execution_exposing --(cancel latched)--> cancelexecution -> idle
    any --(laser error / exception)--> fatalerror
 
@@ -249,6 +251,7 @@ public:
 		pStateEnvironment->SetIntegerParameter("execution", "exposurecount", 0);
 		pStateEnvironment->SetIntegerParameter("execution", "waitingsince", 0);
 		pStateEnvironment->SetIntegerParameter("execution", "watchdogremainingms", 0);
+		pStateEnvironment->SetBoolParameter("execution", "automode", false);
 
 		pStateEnvironment->SetStringParameter("ui", "currentlayerdisplay", "---");
 		pStateEnvironment->SetStringParameter("ui", "currentheightdisplay", "---");
@@ -257,6 +260,7 @@ public:
 
 		pStateEnvironment->SetBoolParameter("ui", "build_canbecanceled", false);
 		pStateEnvironment->SetBoolParameter("ui", "build_canbestarted", true);
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", false);
 
 		pStateEnvironment->SetNextState("idle");
 	}
@@ -284,6 +288,7 @@ public:
 
 		pStateEnvironment->SetBoolParameter("ui", "build_canbestarted", true);
 		pStateEnvironment->SetBoolParameter("ui", "build_canbecanceled", false);
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", false);
 		pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Idle");
 
 		LibMCEnv::PSignalHandler pSignalHandler;
@@ -325,6 +330,18 @@ public:
 				pStateEnvironment->LogWarning("Rejected single layer exposure: " + sError);
 				pStateEnvironment->SetNextState("idle");
 			}
+		}
+		else if (pStateEnvironment->WaitForSignal("signal_setautomode", 0, pSignalHandler)) {
+			bool bAutoMode = pSignalHandler->GetBool("automode");
+			auto nAutoDelayMS = pSignalHandler->GetInteger("autodelayms");
+			if (nAutoDelayMS < 0)
+				nAutoDelayMS = 0;
+			pSignalHandler->SignalHandled();
+
+			pStateEnvironment->SetBoolParameter("execution", "automode", bAutoMode);
+			pStateEnvironment->SetIntegerParameter("execution", "autodelayms", nAutoDelayMS);
+			pStateEnvironment->LogMessage("Automatic layer mode " + std::string(bAutoMode ? "enabled" : "disabled") + " (delay " + std::to_string(nAutoDelayMS) + " ms).");
+			pStateEnvironment->SetNextState("idle");
 		}
 		else if (pStateEnvironment->WaitForSignal("signal_changesimulationparameters", 0, pSignalHandler)) {
 			bool bSimulateLaser = pSignalHandler->GetBool("simulatelaser");
@@ -380,6 +397,7 @@ public:
 		auto nExposureTimeOut = pStateEnvironment->GetIntegerParameter("jobinfo", "exposuretimeout");
 
 		pStateEnvironment->SetBoolParameter("ui", "build_canbestarted", false);
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", false);
 		pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Exposing single layer " + std::to_string(nLayerIndex));
 		pStateEnvironment->LogMessage("Single layer exposure of layer " + std::to_string(nLayerIndex) + " of job " + sJobUUID);
 
@@ -476,6 +494,7 @@ public:
 
 		pStateEnvironment->SetBoolParameter("ui", "build_canbecanceled", true);
 		pStateEnvironment->SetBoolParameter("ui", "build_canbestarted", false);
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", false);
 
 		pStateEnvironment->SetStringParameter("ui", "currentlayerdisplay", "---");
 		pStateEnvironment->SetStringParameter("ui", "currentlayerheightdisplay", "---");
@@ -520,7 +539,11 @@ public:
 			throw ELibMCPluginInterfaceException(LIBMCPLUGIN_ERROR_INVALIDPARAM);
 
 		updateSubsystemErrorFlags(pStateEnvironment);
-		pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Waiting for remote");
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", true);
+		if (pStateEnvironment->GetBoolParameter("execution", "automode"))
+			pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Waiting (automatic)");
+		else
+			pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Waiting for remote");
 
 		LibMCEnv::PSignalHandler pSignalHandler;
 
@@ -590,9 +613,24 @@ public:
 			pStateEnvironment->SetIntegerParameter("execution", "waitingsince", (int64_t)pStateEnvironment->GetGlobalTimerInMilliseconds());
 		}
 
-		// Watchdog: cancel the execution if the external master goes silent for too long.
+		// Automatic mode settings from the UI (or an external caller).
+		bool bAutoMode = pStateEnvironment->GetBoolParameter("execution", "automode");
+		if (pStateEnvironment->WaitForSignal("signal_setautomode", 0, pSignalHandler)) {
+			bAutoMode = pSignalHandler->GetBool("automode");
+			auto nAutoDelayMS = pSignalHandler->GetInteger("autodelayms");
+			if (nAutoDelayMS < 0)
+				nAutoDelayMS = 0;
+			pSignalHandler->SignalHandled();
+
+			pStateEnvironment->SetBoolParameter("execution", "automode", bAutoMode);
+			pStateEnvironment->SetIntegerParameter("execution", "autodelayms", nAutoDelayMS);
+			pStateEnvironment->LogMessage("Automatic layer mode " + std::string(bAutoMode ? "enabled" : "disabled") + " (delay " + std::to_string(nAutoDelayMS) + " ms).");
+		}
+
+		// Watchdog: cancel the execution if the external master goes silent for too long. While the
+		// machine drives itself in automatic mode, the watchdog does not apply.
 		auto nWatchdogTimeout = pStateEnvironment->GetIntegerParameter("execution", "watchdogtimeout");
-		if (nWatchdogTimeout > 0) {
+		if ((nWatchdogTimeout > 0) && (!bAutoMode)) {
 			auto nWaitingSince = pStateEnvironment->GetIntegerParameter("execution", "waitingsince");
 			int64_t nNow = (int64_t)pStateEnvironment->GetGlobalTimerInMilliseconds();
 			int64_t nElapsed = nNow - nWaitingSince;
@@ -609,6 +647,38 @@ public:
 		}
 		else {
 			pStateEnvironment->SetIntegerParameter("execution", "watchdogremainingms", 0);
+		}
+
+		// Automatic mode: once the configured delay has elapsed since this wait started, the machine
+		// acts as its own remote master and starts the next layer (the last one exposed finishes the
+		// execution on its own).
+		if (bAutoMode) {
+			auto nAutoDelayMS = pStateEnvironment->GetIntegerParameter("execution", "autodelayms");
+			if (nAutoDelayMS < 0)
+				nAutoDelayMS = 0;
+			int64_t nElapsed = (int64_t)pStateEnvironment->GetGlobalTimerInMilliseconds() - pStateEnvironment->GetIntegerParameter("execution", "waitingsince");
+
+			if (nElapsed >= nAutoDelayMS) {
+				int64_t nNextLayer = pStateEnvironment->GetIntegerParameter("execution", "lastexposedlayer") + 1;
+				auto nLayerCount = pStateEnvironment->GetIntegerParameter("jobinfo", "layercount");
+
+				if (nNextLayer >= nLayerCount) {
+					pStateEnvironment->LogMessage("Automatic mode: all layers exposed - finishing execution.");
+					pStateEnvironment->SetNextState("finishexecution");
+					return;
+				}
+				else if (!pStateEnvironment->GetBoolParameter("execution", "lasterror")) {
+					pStateEnvironment->SetIntegerParameter("execution", "currentlayer", nNextLayer);
+					pStateEnvironment->SetBoolParameter("execution", "exposing", true);
+					pStateEnvironment->LogMessage("Automatic mode: exposing layer " + std::to_string(nNextLayer));
+					pStateEnvironment->SetNextState("execution_exposing");
+					return;
+				}
+			}
+
+			// Stay in the wait until the delay has elapsed and the next layer starts.
+			pStateEnvironment->SetNextState("execution_waiting");
+			return;
 		}
 
 		pStateEnvironment->SetNextState("execution_waiting");
@@ -640,6 +710,7 @@ public:
 		double dTotalHeight = pStateEnvironment->GetDoubleParameter("jobinfo", "totalheight");
 
 		pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Exposing layer " + std::to_string(nCurrentLayer));
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", false);
 		pStateEnvironment->LogMessage("Exposing layer " + std::to_string(nCurrentLayer) + " / " + std::to_string(nLayerCount));
 
 		auto pExposureSignal = pStateEnvironment->PrepareSignal("laser", "signal_exposure");
@@ -735,6 +806,7 @@ public:
 		pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Finished");
 		pStateEnvironment->SetBoolParameter("ui", "build_canbecanceled", false);
 		pStateEnvironment->SetBoolParameter("ui", "build_canbestarted", true);
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", false);
 
 		pStateEnvironment->UnloadAllToolpathes();
 
@@ -777,6 +849,7 @@ public:
 		pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Cancelled");
 		pStateEnvironment->SetBoolParameter("ui", "build_canbecanceled", false);
 		pStateEnvironment->SetBoolParameter("ui", "build_canbestarted", true);
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", false);
 
 		pStateEnvironment->SetNextState("idle");
 	}
@@ -808,6 +881,8 @@ public:
 		pStateEnvironment->SetBoolParameter("execution", "exposing", false);
 		pStateEnvironment->SetBoolParameter("ui", "build_canbecanceled", false);
 		pStateEnvironment->SetStringParameter("ui", "executionstatusdisplay", "Error");
+		pStateEnvironment->SetBoolParameter("ui", "layer_canbetriggered", false);
+		pStateEnvironment->SetBoolParameter("execution", "automode", false);
 
 		// Surface the main fault so the recovery button appears.
 		pStateEnvironment->SetBoolParameter("ui", "main_haserror", true);

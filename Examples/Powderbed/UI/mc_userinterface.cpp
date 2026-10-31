@@ -837,6 +837,96 @@ public:
 };
 
 
+// Element path of the execution page ("buildstatus"). The page's outer grid and the tabs flatten
+// into their parent path, while content modules and content items contribute their name, so the
+// automation form resolves to "buildstatus.overview.ov_automationcell.ov_autoform".
+#define POWDERBED_EXECUTION_PAGE "buildstatus."
+
+
+// "Next Layer" button on the execution page: fires the same remote action an external master would
+// send (signal_exposelayer) for the next layer of the running execution. Only valid while the main
+// state machine waits for a layer command.
+class CEvent_OnTriggerLayer : public virtual CEvent {
+public:
+	static std::string getEventName() { return "ontriggerlayer"; }
+
+	void Handle(LibMCEnv::PUIEnvironment pUIEnvironment) override
+	{
+		if (!pUIEnvironment->CheckPermission("permission_remote_execution")) {
+			pUIEnvironment->ShowHint("You are not allowed to trigger layers.", 3000);
+			return;
+		}
+
+		if (pUIEnvironment->GetMachineState("main") != "execution_waiting") {
+			pUIEnvironment->ShowHint("The machine is not waiting for a layer command.", 3000);
+			return;
+		}
+
+		int64_t nNextLayer = pUIEnvironment->GetMachineParameterAsInteger("main", "execution", "lastexposedlayer") + 1;
+		int64_t nLayerCount = pUIEnvironment->GetMachineParameterAsInteger("main", "jobinfo", "layercount");
+		if (nNextLayer >= nLayerCount) {
+			pUIEnvironment->ShowHint("All layers are exposed - end or cancel the execution.", 4000);
+			return;
+		}
+
+		auto pSignal = pUIEnvironment->PrepareSignal("main", "signal_exposelayer");
+		pSignal->SetInteger("layerindex", nNextLayer);
+		pSignal->Trigger();
+
+		if (!pSignal->WaitForHandling(5000)) {
+			pUIEnvironment->ShowHint("The machine did not respond - layer was not exposed.", 3000);
+			return;
+		}
+
+		if (pSignal->GetBoolResult("accepted")) {
+			pUIEnvironment->LogMessage("Layer " + std::to_string(nNextLayer) + " triggered from the execution page.");
+			pUIEnvironment->ShowHint("Exposing layer " + std::to_string(nNextLayer) + "...", 3000);
+		}
+		else {
+			pUIEnvironment->ShowHint("Layer " + std::to_string(nNextLayer) + " not exposed: " + pSignal->GetStringResult("errormessage"), 5000);
+		}
+	}
+};
+
+
+// Automatic mode controls on the execution page ("Automatic mode" switch and "Auto delay" field).
+// Both controls fire this event on change; the current values are read from the automation form
+// and stored on the main state machine via signal_setautomode. The signal stays queued while a
+// layer is being exposed and takes effect at the next wait, so no handling is awaited here.
+class CEvent_OnSetAutomode : public virtual CEvent {
+public:
+	static std::string getEventName() { return "onsetautomode"; }
+
+	void Handle(LibMCEnv::PUIEnvironment pUIEnvironment) override
+	{
+		if (!pUIEnvironment->CheckPermission("permission_remote_execution")) {
+			pUIEnvironment->ShowHint("You are not allowed to change the execution automation.", 3000);
+			return;
+		}
+
+		const std::string sForm = POWDERBED_EXECUTION_PAGE "overview.ov_automationcell.ov_autoform.";
+
+		bool bAutoMode = pUIEnvironment->GetUIPropertyAsBool(sForm + "ov_automode", "value");
+		int64_t nAutoDelayMS = pUIEnvironment->GetUIPropertyAsInteger(sForm + "ov_autodelay", "value");
+		if (nAutoDelayMS < 0)
+			nAutoDelayMS = 0;
+
+		auto pSignal = pUIEnvironment->PrepareSignal("main", "signal_setautomode");
+		pSignal->SetBool("automode", bAutoMode);
+		pSignal->SetInteger("autodelayms", nAutoDelayMS);
+		pSignal->Trigger();
+
+		// While idle the machine picks the signal up almost immediately; while exposing a layer it
+		// stays queued and is applied at the next wait. Either way the request is accepted.
+		pSignal->WaitForHandling(1000);
+
+		std::string sMessage = std::string("Automatic mode ") + (bAutoMode ? "enabled" : "disabled") + " (delay " + std::to_string(nAutoDelayMS) + " ms).";
+		pUIEnvironment->LogMessage(sMessage);
+		pUIEnvironment->ShowHint(sMessage, 3000);
+	}
+};
+
+
 /*************************************************************************************************************************
  Remote execution events
 
@@ -1064,6 +1154,10 @@ IEvent* CEventHandler::CreateEvent(const std::string& sEventName, LibMCEnv::PUIE
 	if (createEventInstanceByName<CEvent_OnCloseDialog>(sEventName, pEventInstance))
 		return pEventInstance;
 	if (createEventInstanceByName<CEvent_OnExposePreviewLayer>(sEventName, pEventInstance))
+		return pEventInstance;
+	if (createEventInstanceByName<CEvent_OnTriggerLayer>(sEventName, pEventInstance))
+		return pEventInstance;
+	if (createEventInstanceByName<CEvent_OnSetAutomode>(sEventName, pEventInstance))
 		return pEventInstance;
 	if (createEventInstanceByName<CEvent_ExposeLayer>(sEventName, pEventInstance))
 		return pEventInstance;

@@ -83,6 +83,7 @@
 			<parameter name="executionstatusdisplay" description="Human-readable execution status" default="Idle" type="string"/>
 			<parameter name="build_canbecanceled" description="Execution can be canceled" default="0" type="bool"/>
 			<parameter name="build_canbestarted" description="Execution can be started" default="1" type="bool"/>
+			<parameter name="layer_canbetriggered" description="A layer can be triggered from the execution page" default="0" type="bool"/>
 			<!-- Per-subsystem error flags driving the Overview tab's recovery UI. system_haserror
 			     gates the whole recovery section (shown when any subsystem is in error). -->
 			<parameter name="system_haserror" description="Any subsystem reported an error" default="0" type="bool"/>
@@ -142,6 +143,8 @@
 			<parameter name="watchdogtimeout" description="Max ms between layer commands before auto-cancel (0 disables)" default="300000" type="int" configschema="com.autodesk.powderbed" configpath="Process/WatchdogTimeout"/>
 			<parameter name="waitingsince" description="Global timer stamp (ms) when the current wait started" default="0" type="int"/>
 			<parameter name="watchdogremainingms" description="Remaining watchdog time in ms" default="0" type="int"/>
+			<parameter name="automode" description="Next layers start automatically after the configured delay" default="0" type="bool"/>
+			<parameter name="autodelayms" description="Delay in ms before the next layer starts in automatic mode" default="200" type="int"/>
 		</parametergroup>
 
 		<!-- Operator-triggered exposure of a single layer from the build library preview, outside
@@ -180,6 +183,13 @@
 
 		<!-- Remote master is still alive between layers: re-arms the watchdog while waiting. -->
 		<signaldefinition name="signal_keepalive">
+		</signaldefinition>
+
+		<!-- Operator (UI) or external master toggles automatic layer mode and sets the
+		     layer-to-layer delay used while waiting. -->
+		<signaldefinition name="signal_setautomode">
+			<parameter name="automode" type="bool"/>
+			<parameter name="autodelayms" type="int"/>
 		</signaldefinition>
 
 		<!-- Cancel the running execution (from UI or REST). Cancelable, not pausable. -->
@@ -581,7 +591,9 @@
 		</page>
 
 		<!-- Execution page: live toolpath preview of the executing build plus the remote execution
-		     status. Layers are triggered by the external master; the operator can only cancel. -->
+		     status. Layers are triggered by the external master; the operator can also trigger the
+		     next layer manually ("Next Layer"), let the machine advance itself in automatic mode,
+		     or cancel. -->
 		<page name="buildstatus">
 
 			<grid name="previewgrid" padding="6">
@@ -610,6 +622,7 @@
 							<row height="44" unit="pt"/>
 							<row height="44" unit="pt"/>
 							<row height="44" unit="pt"/>
+							<row height="84" unit="pt"/>
 							<row height="1" unit="free"/>
 
 							<content name="ov_banner" columnstart="1" rowstart="1" columnend="2" rowend="1" rowposition="centered">
@@ -653,6 +666,7 @@
 							</content>
 							<content name="ov_actionscell" columnstart="2" rowstart="6" columnend="2" rowend="6" rowposition="centered">
 								<buttongroup name="ov_actions" distribution="equal">
+									<button name="ov_nextlayer" caption="Next Layer" event="ontriggerlayer" sync:disabled="!main.ui.layer_canbetriggered"/>
 									<button name="ov_cancel" caption="Cancel" event="cancelexecution" sync:disabled="!main.ui.build_canbecanceled"/>
 								</buttongroup>
 							</content>
@@ -670,9 +684,19 @@
 								</form>
 							</content>
 
+							<!-- Automatic layer mode: when enabled, the machine exposes the next layer
+							     on its own after the configured delay instead of waiting for the
+							     external master. Both controls send "onsetautomode" on change. -->
+							<content name="ov_automationcell" columnstart="1" rowstart="9" columnend="2" rowend="9">
+								<form name="ov_autoform">
+									<switch name="ov_automode" caption="Automatic mode" sync:value="main.execution.automode" changeevent="onsetautomode"/>
+									<edit name="ov_autodelay" caption="Auto delay (ms)" minvalue="0" maxvalue="300000" sync:value="main.execution.autodelayms" changeevent="onsetautomode"/>
+								</form>
+							</content>
+
 							<!-- The remaining space holds the live system log and the part list of the
 							     current build job. -->
-							<tabs name="ov_logtabs" columnstart="1" rowstart="9" columnend="2" rowend="9">
+							<tabs name="ov_logtabs" columnstart="1" rowstart="10" columnend="2" rowend="10">
 								<content name="ov_logs" caption="Logs" scrollbars="1">
 									<logs name="systemlog" caption="Log Messages">
 									</logs>
