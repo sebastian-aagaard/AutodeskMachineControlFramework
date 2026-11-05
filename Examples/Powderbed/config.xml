@@ -614,16 +614,17 @@
 							<column width="1" unit="free"/>
 							<column width="130" unit="pt"/>
 
-							<row height="60" unit="pt"/>
-							<row height="40" unit="pt"/>
-							<row height="40" unit="pt"/>
-							<row height="12" unit="pt"/>
+							<row height="52" unit="pt"/>
+							<row height="36" unit="pt"/>
+							<row height="36" unit="pt"/>
+							<row height="8" unit="pt"/>
 							<row height="44" unit="pt"/>
 							<row height="44" unit="pt"/>
 							<row height="44" unit="pt"/>
 							<row height="44" unit="pt"/>
-							<row height="84" unit="pt"/>
-							<row height="1" unit="free"/>
+							<row height="44" unit="pt"/>
+							<row height="72" unit="pt"/>
+							<row height="1" unit="free" minheight="90"/>
 
 							<content name="ov_banner" columnstart="1" rowstart="1" columnend="2" rowend="1" rowposition="centered">
 								<statusbanner name="ov_ok" severity="ok" title="All systems nominal" description="All subsystems are operating normally." sync:visible="!main.ui.system_haserror"/>
@@ -677,9 +678,14 @@
 								</form>
 							</content>
 
-							<content name="ov_watchdogcell" columnstart="1" rowstart="8" columnend="2" rowend="8" rowposition="centered">
-								<form name="ov_watchdogform">
+							<content name="ov_exposurecell" columnstart="1" rowstart="8" columnend="2" rowend="8" rowposition="centered">
+								<form name="ov_exposureform">
 									<edit name="ov_exposurecount" caption="Layers exposed" sync:value="main.execution.exposurecount" readonly="1"/>
+								</form>
+							</content>
+
+							<content name="ov_watchdogcell" columnstart="1" rowstart="9" columnend="2" rowend="9" rowposition="centered">
+								<form name="ov_watchdogform">
 									<edit name="ov_watchdog" caption="Watchdog remaining (ms)" sync:value="main.execution.watchdogremainingms" readonly="1"/>
 								</form>
 							</content>
@@ -687,7 +693,7 @@
 							<!-- Automatic layer mode: when enabled, the machine exposes the next layer
 							     on its own after the configured delay instead of waiting for the
 							     external master. Both controls send "onsetautomode" on change. -->
-							<content name="ov_automationcell" columnstart="1" rowstart="9" columnend="2" rowend="9">
+							<content name="ov_automationcell" columnstart="1" rowstart="10" columnend="2" rowend="10">
 								<form name="ov_autoform">
 									<switch name="ov_automode" caption="Automatic mode" sync:value="main.execution.automode" changeevent="onsetautomode"/>
 									<edit name="ov_autodelay" caption="Auto delay (ms)" minvalue="0" maxvalue="300000" sync:value="main.execution.autodelayms" changeevent="onsetautomode"/>
@@ -696,7 +702,7 @@
 
 							<!-- The remaining space holds the live system log and the part list of the
 							     current build job. -->
-							<tabs name="ov_logtabs" columnstart="1" rowstart="10" columnend="2" rowend="10">
+							<tabs name="ov_logtabs" columnstart="1" rowstart="11" columnend="2" rowend="11">
 								<content name="ov_logs" caption="Logs" scrollbars="1">
 									<logs name="systemlog" caption="Log Messages">
 									</logs>
