@@ -3368,6 +3368,47 @@ typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_GetSegmentProfileTypedValueDefPt
 typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_GetSegmentProfileTypedModificationTypePtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv::eToolpathProfileModificationType * pModificationType);
 
 /**
+* Retrieves the number of modifiers of the profile assigned to a segment.
+*
+* @param[in] pToolpathLayer - ToolpathLayer instance.
+* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+* @param[out] pModifierCount - Number of modifiers of the profile.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_GetSegmentProfileModifierCountPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv_uint32 * pModifierCount);
+
+/**
+* Retrieves a modifier of the profile assigned to a segment.
+*
+* @param[in] pToolpathLayer - ToolpathLayer instance.
+* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+* @param[in] nModifierIndex - Index of the modifier. Must be between 0 and ModifierCount - 1.
+* @param[in] nNamespaceBufferSize - size of the buffer (including trailing 0)
+* @param[out] pNamespaceNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pNamespaceBuffer -  buffer of Namespace of the modified profile value. Empty for standard values., may be NULL
+* @param[in] nValueNameBufferSize - size of the buffer (including trailing 0)
+* @param[out] pValueNameNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pValueNameBuffer -  buffer of Name of the modified profile value., may be NULL
+* @param[out] pModificationType - Modification type.
+* @param[out] pModificationFactor - Factor that the layer data uses for this modifier.
+* @param[out] pMinValue - Value for a factor of 0.
+* @param[out] pMaxValue - Value for a factor of 1.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_GetSegmentProfileModifierInfoPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv_uint32 nModifierIndex, const LibMCEnv_uint32 nNamespaceBufferSize, LibMCEnv_uint32* pNamespaceNeededChars, char * pNamespaceBuffer, const LibMCEnv_uint32 nValueNameBufferSize, LibMCEnv_uint32* pValueNameNeededChars, char * pValueNameBuffer, LibMCEnv::eToolpathProfileModificationType * pModificationType, LibMCEnv::eToolpathProfileModificationFactor * pModificationFactor, LibMCEnv_double * pMinValue, LibMCEnv_double * pMaxValue);
+
+/**
+* Returns if the layer data of a segment carries factors of the given type. Segments without factors are evaluated with the nominal profile value.
+*
+* @param[in] pToolpathLayer - ToolpathLayer instance.
+* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+* @param[in] eModificationFactor - Modification factor to check.
+* @param[out] pHasFactors - Returns true if the segment carries factors of the given type.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_SegmentHasModificationFactorsPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv::eToolpathProfileModificationFactor eModificationFactor, bool * pHasFactors);
+
+/**
 * Retrieves the assigned segment part uuid.
 *
 * @param[in] pToolpathLayer - ToolpathLayer instance.
@@ -3438,7 +3479,7 @@ typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_GetSegmentHatchDataPtr) (LibMCEn
 typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_GetSegmentHatchDataInMMPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, const LibMCEnv_uint64 nHatchDataBufferSize, LibMCEnv_uint64* pHatchDataNeededCount, LibMCEnv::sFloatHatch2D * pHatchDataBuffer);
 
 /**
-* Evaluates a typed profile value with its modifier factors. Fails if segment type is not hatch.
+* Evaluates a typed profile value with its modifier factors. Segments without factors of the modifier return the nominal profile value. Fails if segment type is not hatch.
 *
 * @param[in] pToolpathLayer - ToolpathLayer instance.
 * @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
@@ -3468,6 +3509,19 @@ typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_EvaluateTypedHatchProfileModifie
 * @return error code or 0 (success)
 */
 typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_EvaluateTypedHatchProfileInterpolationPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv::eToolpathProfileValueType eValueType, const LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32 * pCountArrayBuffer, const LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData * pEvaluationDataBuffer);
+
+/**
+* Evaluates a typed profile value with its modifier factors for each line of a polyline or loop segment. A line takes the factor of the point it ends in; the closing line of a loop takes the factor of the first point. Segments without factors of the modifier return the nominal profile value. Fails if segment type is not polyline.
+*
+* @param[in] pToolpathLayer - ToolpathLayer instance.
+* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
+* @param[in] nEvaluationDataBufferSize - Number of elements in buffer
+* @param[out] pEvaluationDataNeededCount - will be filled with the count of the written elements, or needed buffer size.
+* @param[out] pEvaluationDataBuffer - double  buffer of Evaluated value of each line. Will return PointCount - 1 elements.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_EvaluateTypedPolylineProfileModifierPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv::eToolpathProfileValueType eValueType, const LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv_double * pEvaluationDataBuffer);
 
 /**
 * Retrieves the layers Z Value in units.
@@ -3681,6 +3735,60 @@ typedef LibMCEnvResult (*PLibMCEnvToolpathAccessor_GetPartPtr) (LibMCEnv_Toolpat
 * @return error code or 0 (success)
 */
 typedef LibMCEnvResult (*PLibMCEnvToolpathAccessor_FindPartByUUIDPtr) (LibMCEnv_ToolpathAccessor pToolpathAccessor, const char * pPartUUID, LibMCEnv_ToolpathPart * pPart);
+
+/**
+* Retrieves the number of toolpath profiles.
+*
+* @param[in] pToolpathAccessor - ToolpathAccessor instance.
+* @param[out] pProfileCount - Number of profiles.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathAccessor_GetProfileCountPtr) (LibMCEnv_ToolpathAccessor pToolpathAccessor, LibMCEnv_uint32 * pProfileCount);
+
+/**
+* Retrieves the UUID and name of a toolpath profile.
+*
+* @param[in] pToolpathAccessor - ToolpathAccessor instance.
+* @param[in] nProfileIndex - Index of the profile. MUST be between 0 and ProfileCount - 1.
+* @param[in] nUUIDBufferSize - size of the buffer (including trailing 0)
+* @param[out] pUUIDNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pUUIDBuffer -  buffer of UUID of the profile., may be NULL
+* @param[in] nNameBufferSize - size of the buffer (including trailing 0)
+* @param[out] pNameNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pNameBuffer -  buffer of Name of the profile., may be NULL
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathAccessor_GetProfileInfoPtr) (LibMCEnv_ToolpathAccessor pToolpathAccessor, LibMCEnv_uint32 nProfileIndex, const LibMCEnv_uint32 nUUIDBufferSize, LibMCEnv_uint32* pUUIDNeededChars, char * pUUIDBuffer, const LibMCEnv_uint32 nNameBufferSize, LibMCEnv_uint32* pNameNeededChars, char * pNameBuffer);
+
+/**
+* Retrieves the number of modifiers of a toolpath profile.
+*
+* @param[in] pToolpathAccessor - ToolpathAccessor instance.
+* @param[in] nProfileIndex - Index of the profile. MUST be between 0 and ProfileCount - 1.
+* @param[out] pModifierCount - Number of modifiers of the profile.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathAccessor_GetProfileModifierCountPtr) (LibMCEnv_ToolpathAccessor pToolpathAccessor, LibMCEnv_uint32 nProfileIndex, LibMCEnv_uint32 * pModifierCount);
+
+/**
+* Retrieves a modifier of a toolpath profile. Allows checking all modifiers of a build before it starts.
+*
+* @param[in] pToolpathAccessor - ToolpathAccessor instance.
+* @param[in] nProfileIndex - Index of the profile. MUST be between 0 and ProfileCount - 1.
+* @param[in] nModifierIndex - Index of the modifier. MUST be between 0 and ModifierCount - 1.
+* @param[in] nNamespaceBufferSize - size of the buffer (including trailing 0)
+* @param[out] pNamespaceNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pNamespaceBuffer -  buffer of Namespace of the modified profile value. Empty for standard values., may be NULL
+* @param[in] nValueNameBufferSize - size of the buffer (including trailing 0)
+* @param[out] pValueNameNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pValueNameBuffer -  buffer of Name of the modified profile value., may be NULL
+* @param[out] pModificationType - Modification type.
+* @param[out] pModificationFactor - Factor that the layer data uses for this modifier.
+* @param[out] pMinValue - Value for a factor of 0.
+* @param[out] pMaxValue - Value for a factor of 1.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathAccessor_GetProfileModifierInfoPtr) (LibMCEnv_ToolpathAccessor pToolpathAccessor, LibMCEnv_uint32 nProfileIndex, LibMCEnv_uint32 nModifierIndex, const LibMCEnv_uint32 nNamespaceBufferSize, LibMCEnv_uint32* pNamespaceNeededChars, char * pNamespaceBuffer, const LibMCEnv_uint32 nValueNameBufferSize, LibMCEnv_uint32* pValueNameNeededChars, char * pValueNameBuffer, LibMCEnv::eToolpathProfileModificationType * pModificationType, LibMCEnv::eToolpathProfileModificationFactor * pModificationFactor, LibMCEnv_double * pMinValue, LibMCEnv_double * pMaxValue);
 
 /**
 * Retrieves the build height in units.
@@ -10067,6 +10175,89 @@ typedef LibMCEnvResult (*PLibMCEnvTelemetryChannel_StartMarkerScopePtr) (LibMCEn
 typedef LibMCEnvResult (*PLibMCEnvTelemetryChannel_CreateInstantMarkerPtr) (LibMCEnv_TelemetryChannel pTelemetryChannel, LibMCEnv_uint64 nUserContextData, LibMCEnv_uint64 * pMarkerID);
 
 /*************************************************************************************************************************
+ Class definition for Formula
+**************************************************************************************************************************/
+
+/**
+* Returns the formula text.
+*
+* @param[in] pFormula - Formula instance.
+* @param[in] nFormulaBufferSize - size of the buffer (including trailing 0)
+* @param[out] pFormulaNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pFormulaBuffer -  buffer of Formula text., may be NULL
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvFormula_GetFormulaPtr) (LibMCEnv_Formula pFormula, const LibMCEnv_uint32 nFormulaBufferSize, LibMCEnv_uint32* pFormulaNeededChars, char * pFormulaBuffer);
+
+/**
+* Returns the number of distinct references of the formula.
+*
+* @param[in] pFormula - Formula instance.
+* @param[out] pCount - Number of distinct references.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvFormula_GetReferenceCountPtr) (LibMCEnv_Formula pFormula, LibMCEnv_uint32 * pCount);
+
+/**
+* Returns a reference of the formula, in order of first appearance.
+*
+* @param[in] pFormula - Formula instance.
+* @param[in] nIndex - Index of the reference, 0-based. Fails if larger or equal to the reference count.
+* @param[in] nPathBufferSize - size of the buffer (including trailing 0)
+* @param[out] pPathNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pPathBuffer -  buffer of Reference as written in the formula, for example main.jobinfo.currentlayer or session.name., may be NULL
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvFormula_GetReferencePtr) (LibMCEnv_Formula pFormula, LibMCEnv_uint32 nIndex, const LibMCEnv_uint32 nPathBufferSize, LibMCEnv_uint32* pPathNeededChars, char * pPathBuffer);
+
+/**
+* Returns if the formula references session or user values.
+*
+* @param[in] pFormula - Formula instance.
+* @param[out] pHasSessionReferences - True, if the formula contains a session or user reference.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvFormula_HasSessionReferencesPtr) (LibMCEnv_Formula pFormula, bool * pHasSessionReferences);
+
+/**
+* Evaluates the formula and returns the result as string. Booleans are returned as 1 and 0. Fails with FORMULAEVALUATIONFAILED on runtime errors like a division by zero or an unknown parameter.
+*
+* @param[in] pFormula - Formula instance.
+* @param[in] nValueBufferSize - size of the buffer (including trailing 0)
+* @param[out] pValueNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pValueBuffer -  buffer of Result of the formula., may be NULL
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvFormula_EvaluatePtr) (LibMCEnv_Formula pFormula, const LibMCEnv_uint32 nValueBufferSize, LibMCEnv_uint32* pValueNeededChars, char * pValueBuffer);
+
+/**
+* Evaluates the formula and returns the result as double. An empty result is 0. Fails if the result is a text that is not a number.
+*
+* @param[in] pFormula - Formula instance.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvFormula_EvaluateAsDoublePtr) (LibMCEnv_Formula pFormula, LibMCEnv_double * pValue);
+
+/**
+* Evaluates the formula and returns the result as integer. Doubles are rounded to the nearest integer. An empty result is 0. Fails if the result is a text that is not a number.
+*
+* @param[in] pFormula - Formula instance.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvFormula_EvaluateAsIntegerPtr) (LibMCEnv_Formula pFormula, LibMCEnv_int64 * pValue);
+
+/**
+* Evaluates the formula and returns the result as bool. Numbers are true unless zero; strings are true unless empty, 0 or false.
+*
+* @param[in] pFormula - Formula instance.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvFormula_EvaluateAsBoolPtr) (LibMCEnv_Formula pFormula, bool * pValue);
+
+/*************************************************************************************************************************
  Class definition for StateEnvironment
 **************************************************************************************************************************/
 
@@ -11090,6 +11281,58 @@ typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_CreateZIPStreamPtr) (LibMCEnv
 * @return error code or 0 (success)
 */
 typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_LoadStreamPtr) (LibMCEnv_StateEnvironment pStateEnvironment, const char * pUUID, bool bMustExist, LibMCEnv_StreamReader * pStreamInstance);
+
+/**
+* Compiles a formula over the parameters and states of all state machines. Fails with INVALIDFORMULA on syntax errors and with FORMULASESSIONREFERENCESNOTAVAILABLE if the formula references session or user values.
+*
+* @param[in] pStateEnvironment - StateEnvironment instance.
+* @param[in] pFormula - Formula text, for example main.jobinfo.currentlayer + 1.
+* @param[out] pFormulaInstance - Compiled formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_CreateFormulaPtr) (LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, LibMCEnv_Formula * pFormulaInstance);
+
+/**
+* Compiles and evaluates a formula once. See CreateFormula and Formula.Evaluate.
+*
+* @param[in] pStateEnvironment - StateEnvironment instance.
+* @param[in] pFormula - Formula text.
+* @param[in] nValueBufferSize - size of the buffer (including trailing 0)
+* @param[out] pValueNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pValueBuffer -  buffer of Result of the formula., may be NULL
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_EvaluateFormulaPtr) (LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, const LibMCEnv_uint32 nValueBufferSize, LibMCEnv_uint32* pValueNeededChars, char * pValueBuffer);
+
+/**
+* Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsDouble.
+*
+* @param[in] pStateEnvironment - StateEnvironment instance.
+* @param[in] pFormula - Formula text.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_EvaluateFormulaAsDoublePtr) (LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, LibMCEnv_double * pValue);
+
+/**
+* Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsInteger.
+*
+* @param[in] pStateEnvironment - StateEnvironment instance.
+* @param[in] pFormula - Formula text.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_EvaluateFormulaAsIntegerPtr) (LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, LibMCEnv_int64 * pValue);
+
+/**
+* Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsBool.
+*
+* @param[in] pStateEnvironment - StateEnvironment instance.
+* @param[in] pFormula - Formula text.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_EvaluateFormulaAsBoolPtr) (LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, bool * pValue);
 
 /*************************************************************************************************************************
  Class definition for UIItem
@@ -12321,6 +12564,58 @@ typedef LibMCEnvResult (*PLibMCEnvUIEnvironment_GetExternalEventResultsPtr) (Lib
 */
 typedef LibMCEnvResult (*PLibMCEnvUIEnvironment_CreateMachineConfigurationHandlerPtr) (LibMCEnv_UIEnvironment pUIEnvironment, LibMCEnv_MachineConfigurationHandler * pMachineConfigurationHandlerInstance);
 
+/**
+* Compiles a formula over the parameters and states of all state machines and the session and user values of the client session that triggered the event. Fails with INVALIDFORMULA on syntax errors.
+*
+* @param[in] pUIEnvironment - UIEnvironment instance.
+* @param[in] pFormula - Formula text, for example session.formula_a + main.jobinfo.currentlayer.
+* @param[out] pFormulaInstance - Compiled formula. Session and user references keep resolving to the session of this event.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvUIEnvironment_CreateFormulaPtr) (LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, LibMCEnv_Formula * pFormulaInstance);
+
+/**
+* Compiles and evaluates a formula once. See CreateFormula and Formula.Evaluate.
+*
+* @param[in] pUIEnvironment - UIEnvironment instance.
+* @param[in] pFormula - Formula text.
+* @param[in] nValueBufferSize - size of the buffer (including trailing 0)
+* @param[out] pValueNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pValueBuffer -  buffer of Result of the formula., may be NULL
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvUIEnvironment_EvaluateFormulaPtr) (LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, const LibMCEnv_uint32 nValueBufferSize, LibMCEnv_uint32* pValueNeededChars, char * pValueBuffer);
+
+/**
+* Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsDouble.
+*
+* @param[in] pUIEnvironment - UIEnvironment instance.
+* @param[in] pFormula - Formula text.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvUIEnvironment_EvaluateFormulaAsDoublePtr) (LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, LibMCEnv_double * pValue);
+
+/**
+* Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsInteger.
+*
+* @param[in] pUIEnvironment - UIEnvironment instance.
+* @param[in] pFormula - Formula text.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvUIEnvironment_EvaluateFormulaAsIntegerPtr) (LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, LibMCEnv_int64 * pValue);
+
+/**
+* Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsBool.
+*
+* @param[in] pUIEnvironment - UIEnvironment instance.
+* @param[in] pFormula - Formula text.
+* @param[out] pValue - Result of the formula.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvUIEnvironment_EvaluateFormulaAsBoolPtr) (LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, bool * pValue);
+
 /*************************************************************************************************************************
  Global functions
 **************************************************************************************************************************/
@@ -12690,6 +12985,9 @@ typedef struct {
 	PLibMCEnvToolpathLayer_GetSegmentProfileTypedValuePtr m_ToolpathLayer_GetSegmentProfileTypedValue;
 	PLibMCEnvToolpathLayer_GetSegmentProfileTypedValueDefPtr m_ToolpathLayer_GetSegmentProfileTypedValueDef;
 	PLibMCEnvToolpathLayer_GetSegmentProfileTypedModificationTypePtr m_ToolpathLayer_GetSegmentProfileTypedModificationType;
+	PLibMCEnvToolpathLayer_GetSegmentProfileModifierCountPtr m_ToolpathLayer_GetSegmentProfileModifierCount;
+	PLibMCEnvToolpathLayer_GetSegmentProfileModifierInfoPtr m_ToolpathLayer_GetSegmentProfileModifierInfo;
+	PLibMCEnvToolpathLayer_SegmentHasModificationFactorsPtr m_ToolpathLayer_SegmentHasModificationFactors;
 	PLibMCEnvToolpathLayer_GetSegmentPartUUIDPtr m_ToolpathLayer_GetSegmentPartUUID;
 	PLibMCEnvToolpathLayer_GetSegmentLocalPartIDPtr m_ToolpathLayer_GetSegmentLocalPartID;
 	PLibMCEnvToolpathLayer_GetSegmentPolylineDataPtr m_ToolpathLayer_GetSegmentPolylineData;
@@ -12698,6 +12996,7 @@ typedef struct {
 	PLibMCEnvToolpathLayer_GetSegmentHatchDataInMMPtr m_ToolpathLayer_GetSegmentHatchDataInMM;
 	PLibMCEnvToolpathLayer_EvaluateTypedHatchProfileModifierPtr m_ToolpathLayer_EvaluateTypedHatchProfileModifier;
 	PLibMCEnvToolpathLayer_EvaluateTypedHatchProfileInterpolationPtr m_ToolpathLayer_EvaluateTypedHatchProfileInterpolation;
+	PLibMCEnvToolpathLayer_EvaluateTypedPolylineProfileModifierPtr m_ToolpathLayer_EvaluateTypedPolylineProfileModifier;
 	PLibMCEnvToolpathLayer_GetZValuePtr m_ToolpathLayer_GetZValue;
 	PLibMCEnvToolpathLayer_GetZValueInMMPtr m_ToolpathLayer_GetZValueInMM;
 	PLibMCEnvToolpathLayer_GetUnitsPtr m_ToolpathLayer_GetUnits;
@@ -12718,6 +13017,10 @@ typedef struct {
 	PLibMCEnvToolpathAccessor_GetPartCountPtr m_ToolpathAccessor_GetPartCount;
 	PLibMCEnvToolpathAccessor_GetPartPtr m_ToolpathAccessor_GetPart;
 	PLibMCEnvToolpathAccessor_FindPartByUUIDPtr m_ToolpathAccessor_FindPartByUUID;
+	PLibMCEnvToolpathAccessor_GetProfileCountPtr m_ToolpathAccessor_GetProfileCount;
+	PLibMCEnvToolpathAccessor_GetProfileInfoPtr m_ToolpathAccessor_GetProfileInfo;
+	PLibMCEnvToolpathAccessor_GetProfileModifierCountPtr m_ToolpathAccessor_GetProfileModifierCount;
+	PLibMCEnvToolpathAccessor_GetProfileModifierInfoPtr m_ToolpathAccessor_GetProfileModifierInfo;
 	PLibMCEnvToolpathAccessor_GetBuildHeightInUnitsPtr m_ToolpathAccessor_GetBuildHeightInUnits;
 	PLibMCEnvToolpathAccessor_GetZValueInUnitsPtr m_ToolpathAccessor_GetZValueInUnits;
 	PLibMCEnvToolpathAccessor_GetBuildHeightInMMPtr m_ToolpathAccessor_GetBuildHeightInMM;
@@ -13311,6 +13614,14 @@ typedef struct {
 	PLibMCEnvTelemetryChannel_GetGlobalIdentifierPtr m_TelemetryChannel_GetGlobalIdentifier;
 	PLibMCEnvTelemetryChannel_StartMarkerScopePtr m_TelemetryChannel_StartMarkerScope;
 	PLibMCEnvTelemetryChannel_CreateInstantMarkerPtr m_TelemetryChannel_CreateInstantMarker;
+	PLibMCEnvFormula_GetFormulaPtr m_Formula_GetFormula;
+	PLibMCEnvFormula_GetReferenceCountPtr m_Formula_GetReferenceCount;
+	PLibMCEnvFormula_GetReferencePtr m_Formula_GetReference;
+	PLibMCEnvFormula_HasSessionReferencesPtr m_Formula_HasSessionReferences;
+	PLibMCEnvFormula_EvaluatePtr m_Formula_Evaluate;
+	PLibMCEnvFormula_EvaluateAsDoublePtr m_Formula_EvaluateAsDouble;
+	PLibMCEnvFormula_EvaluateAsIntegerPtr m_Formula_EvaluateAsInteger;
+	PLibMCEnvFormula_EvaluateAsBoolPtr m_Formula_EvaluateAsBool;
 	PLibMCEnvStateEnvironment_GetMachineStatePtr m_StateEnvironment_GetMachineState;
 	PLibMCEnvStateEnvironment_GetPreviousStatePtr m_StateEnvironment_GetPreviousState;
 	PLibMCEnvStateEnvironment_PrepareSignalPtr m_StateEnvironment_PrepareSignal;
@@ -13409,6 +13720,11 @@ typedef struct {
 	PLibMCEnvStateEnvironment_CreateTemporaryStreamPtr m_StateEnvironment_CreateTemporaryStream;
 	PLibMCEnvStateEnvironment_CreateZIPStreamPtr m_StateEnvironment_CreateZIPStream;
 	PLibMCEnvStateEnvironment_LoadStreamPtr m_StateEnvironment_LoadStream;
+	PLibMCEnvStateEnvironment_CreateFormulaPtr m_StateEnvironment_CreateFormula;
+	PLibMCEnvStateEnvironment_EvaluateFormulaPtr m_StateEnvironment_EvaluateFormula;
+	PLibMCEnvStateEnvironment_EvaluateFormulaAsDoublePtr m_StateEnvironment_EvaluateFormulaAsDouble;
+	PLibMCEnvStateEnvironment_EvaluateFormulaAsIntegerPtr m_StateEnvironment_EvaluateFormulaAsInteger;
+	PLibMCEnvStateEnvironment_EvaluateFormulaAsBoolPtr m_StateEnvironment_EvaluateFormulaAsBool;
 	PLibMCEnvUIItem_GetNamePtr m_UIItem_GetName;
 	PLibMCEnvUIItem_GetPathPtr m_UIItem_GetPath;
 	PLibMCEnvUIItem_GetUUIDPtr m_UIItem_GetUUID;
@@ -13523,6 +13839,11 @@ typedef struct {
 	PLibMCEnvUIEnvironment_GetExternalEventParametersPtr m_UIEnvironment_GetExternalEventParameters;
 	PLibMCEnvUIEnvironment_GetExternalEventResultsPtr m_UIEnvironment_GetExternalEventResults;
 	PLibMCEnvUIEnvironment_CreateMachineConfigurationHandlerPtr m_UIEnvironment_CreateMachineConfigurationHandler;
+	PLibMCEnvUIEnvironment_CreateFormulaPtr m_UIEnvironment_CreateFormula;
+	PLibMCEnvUIEnvironment_EvaluateFormulaPtr m_UIEnvironment_EvaluateFormula;
+	PLibMCEnvUIEnvironment_EvaluateFormulaAsDoublePtr m_UIEnvironment_EvaluateFormulaAsDouble;
+	PLibMCEnvUIEnvironment_EvaluateFormulaAsIntegerPtr m_UIEnvironment_EvaluateFormulaAsInteger;
+	PLibMCEnvUIEnvironment_EvaluateFormulaAsBoolPtr m_UIEnvironment_EvaluateFormulaAsBool;
 	PLibMCEnvGetVersionPtr m_GetVersion;
 	PLibMCEnvGetLastErrorPtr m_GetLastError;
 	PLibMCEnvReleaseInstancePtr m_ReleaseInstance;

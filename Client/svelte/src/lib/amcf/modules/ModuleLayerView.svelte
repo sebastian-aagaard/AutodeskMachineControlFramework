@@ -8,13 +8,22 @@
 	import Axis3d from '@lucide/svelte/icons/axis-3d';
 	import Tags from '@lucide/svelte/icons/tags';
 	import Info from '@lucide/svelte/icons/info';
-	import Palette from '@lucide/svelte/icons/palette';
 	import ZapOff from '@lucide/svelte/icons/zap-off';
 	import Route from '@lucide/svelte/icons/route';
+	import SkipBack from '@lucide/svelte/icons/skip-back';
+	import SkipForward from '@lucide/svelte/icons/skip-forward';
+	import Play from '@lucide/svelte/icons/play';
+	import Paintbrush from '@lucide/svelte/icons/paintbrush';
+	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Spline from '@lucide/svelte/icons/spline';
 	// @ts-ignore — core JS has no type declarations yet
 	import WebGLImpl from '@core/common/AMCImplementation_WebGL.js';
 	// @ts-ignore
 	import LayerViewImpl from '@core/common/AMCImplementation_LayerView.js';
+	// @ts-ignore
+	import { COLORMAP_PRESETS, DEFAULT_COLORMAP, colorMapCSSGradient } from '@core/common/AMCImplementation_ColorMaps.js';
 
 	const ZOOM_MARGIN = 10;
 	// Smaller selections are treated as accidental clicks and do not zoom.
@@ -22,16 +31,42 @@
 	const PART_MARKER_PX = 5;
 	const NULL_UUID = '00000000-0000-0000-0000-000000000000';
 	const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-	// Scatter plot channel and the columns of it that LayerViewImpl can colour by.
+	// Scatter plot channel and its columns: laseron and power can be coloured by, the others feed
+	// the point inspector and the time slider.
 	const POINT_CHANNEL = 'laser';
-	const POINT_CHANNEL_COLUMNS = ['laseron', 'power'];
-	const POINT_COLOR_MODES = [
-		{ mode: 'unicolor', caption: 'Uniform', column: '' },
-		{ mode: 'time', caption: 'Timing', column: '' },
-		{ mode: 'velocity', caption: 'Velocity', column: '' },
-		{ mode: 'laseron', caption: 'Laser On', column: 'laseron' },
-		{ mode: 'powerramp', caption: 'Power', column: 'power' }
+	const POINT_CHANNEL_COLUMNS = ['laseron', 'power', 'time', 'targetx', 'targety', 'actualx', 'actualy'];
+	const POINT_PICK_TOLERANCE_PX = 4;
+	const SUPPORT_POINT_PICK_TOLERANCE_PX = 3;
+	const POPUP_PART_NAME_MAX_CHARACTERS = 28;
+	const POWER_MODE_CAPTIONS: Record<string, string> = {
+		'': 'Nominal',
+		constant: 'Constant',
+		linear: 'Linear',
+		nonlinear: 'Non-linear'
+	};
+	const TIME_SLIDER_STEPS = 1000;
+	const TIMING_SOURCE_CAPTIONS: Record<string, string> = {
+		recording: 'aligned to recording',
+		'recording-approximate': 'approx. aligned to recording',
+		estimate: 'estimated from laser speed'
+	};
+	// Display modes of the toolpath; the recorded points follow the same mode.
+	const TOOLPATH_COLOR_MODES = [
+		{ mode: 'color', caption: 'Color' },
+		{ mode: 'type', caption: 'Type' },
+		{ mode: 'time', caption: 'Time' },
+		{ mode: 'power', caption: 'Power' },
+		{ mode: 'velocity', caption: 'Velocity' },
+		{ mode: 'laseron', caption: 'Laser On' }
 	];
+	type LegendMode = 'time' | 'power' | 'velocity';
+	const LEGEND_MODES: Record<LegendMode, { title: string; unit: string; resetTitle: string }> = {
+		time: { title: 'Start time', unit: 'ms', resetTitle: 'Reset the range to the layer timeline' },
+		power: { title: 'Laser power', unit: 'W', resetTitle: 'Reset the range to the configured or build laser power range' },
+		velocity: { title: 'Velocity', unit: 'mm/s', resetTitle: 'Reset the range to the laser speeds of the layer' }
+	};
+	type ColorRange = { min: number; max: number };
+	type ColorMapPreset = { name: string; caption: string };
 
 	let { module, app }: { module: any; app: any } = $props();
 	const poll = useModuleTick(() => module);
@@ -75,16 +110,86 @@
 	// Scatter plot (platform.scatterplotuuid) drawn as points on top of the toolpath.
 	let pointsLoaded = $state(false);
 	let pointColumns = $state.raw<string[]>([]);
-	let pointColorMode = $state('unicolor');
 	let showLaserOffPoints = $state(false);
 	let toolpathVisible = $state(true);
 	let pointLoadCounter = 0;
-	let availableColorModes = $derived(
-		POINT_COLOR_MODES.filter((entry) => entry.column === '' || pointColumns.includes(entry.column))
+
+	// Display mode of the toolpath and the recorded points. Power, time and velocity are mapped onto
+	// a color map; the legend in the bottom left corner selects the map and the value range.
+	let toolpathColorMode = $state('color');
+	let toolpathColorCaption = $derived(
+		TOOLPATH_COLOR_MODES.find((entry) => entry.mode === toolpathColorMode)?.caption ?? 'Color'
 	);
-	let pointColorCaption = $derived(
-		POINT_COLOR_MODES.find((entry) => entry.mode === pointColorMode)?.caption ?? 'Uniform'
-	);
+	let endPointsVisible = $state(false);
+	let colorMapName = $state(DEFAULT_COLORMAP);
+	let colorMapInverted = $state(false);
+	let colorMapMenuOpen = $state(false);
+	let colorMapPresets = COLORMAP_PRESETS as ColorMapPreset[];
+	let colorMapCaption = $derived(colorMapPresets.find((preset) => preset.name === colorMapName)?.caption ?? '');
+	let colorMapGradient = $derived(colorMapCSSGradient(colorMapName, colorMapInverted));
+	// Laser power range of the build profiles, sent with every toolpath layer.
+	let buildPowerRange = $state.raw<ColorRange | null>(null);
+	let layerPowerRange = $state.raw<ColorRange | null>(null);
+	let layerVelocityRange = $state.raw<ColorRange | null>(null);
+	// Ranges edited in the legend; null follows the default range.
+	let editedPowerRange = $state.raw<ColorRange | null>(null);
+	let editedTimeRange = $state.raw<ColorRange | null>(null);
+	let editedVelocityRange = $state.raw<ColorRange | null>(null);
+	let configuredPowerRange = $derived.by((): ColorRange | null => {
+		poll.v;
+		if (!platform) return null;
+		const minText = String(platform.powerrangemin ?? '').trim();
+		const maxText = String(platform.powerrangemax ?? '').trim();
+		const minimum = Number(minText);
+		const maximum = Number(maxText);
+		if (minText === '' || maxText === '' || !Number.isFinite(minimum) || !Number.isFinite(maximum) || maximum <= minimum) return null;
+		return { min: minimum, max: maximum };
+	});
+	let defaultPowerRange = $derived.by((): ColorRange => {
+		if (configuredPowerRange) return configuredPowerRange;
+		return rangeFromZeroIfSingle(buildPowerRange ?? layerPowerRange);
+	});
+	let defaultTimeRange = $derived<ColorRange>({ min: 0, max: timelineDuration > 0 ? timelineDuration : 1 });
+	let defaultVelocityRange = $derived(rangeFromZeroIfSingle(layerVelocityRange));
+	let colorRanges = $derived<Record<LegendMode, ColorRange>>({
+		power: editedPowerRange ?? defaultPowerRange,
+		time: editedTimeRange ?? defaultTimeRange,
+		velocity: editedVelocityRange ?? defaultVelocityRange
+	});
+	let editedRanges = $derived<Record<LegendMode, ColorRange | null>>({
+		power: editedPowerRange,
+		time: editedTimeRange,
+		velocity: editedVelocityRange
+	});
+	let legendMode = $derived(toolpathColorMode in LEGEND_MODES ? (toolpathColorMode as LegendMode) : null);
+	let legendVisible = $derived(legendMode !== null && (toolpathVisible || pointsLoaded));
+	let legendRange = $derived(legendMode ? colorRanges[legendMode] : { min: 0, max: 1 });
+	let legendUnit = $derived(legendMode ? LEGEND_MODES[legendMode].unit : '');
+	let legendTitle = $derived(legendMode ? LEGEND_MODES[legendMode].title : '');
+	let legendRangeEdited = $derived(legendMode ? editedRanges[legendMode] !== null : false);
+	// Compared as a string so the calibration is only re-applied when a value changes.
+	let pointSizeCalibrationKey = $derived.by(() => {
+		poll.v;
+		if (!platform) return '';
+		return [platform.pointsizebase, platform.pointsizefactor, platform.pointsizemin, platform.pointsizemax].join('|');
+	});
+
+	// Time slider: caps toolpath and points at a fraction of the layer timeline.
+	let showTimeSlider = $derived.by(() => { poll.v; return Boolean(platform?.showtimeslider); });
+	let timeSliderValue = $state(TIME_SLIDER_STEPS);
+	let timelineDuration = $state(0);
+	let timingSource = $state('none');
+	let timingMatchRatio = $state(0);
+	let timingSourceCaption = $derived.by(() => {
+		const caption = TIMING_SOURCE_CAPTIONS[timingSource] ?? '';
+		if (timingSource !== 'recording') return caption;
+		return `${caption} (${(timingMatchRatio * 100).toFixed(0)}% of vectors matched, rest interpolated)`;
+	});
+	let timeCapCaption = $derived.by(() => {
+		const capTime = (timeSliderValue / TIME_SLIDER_STEPS) * timelineDuration;
+		const percent = (timeSliderValue / TIME_SLIDER_STEPS) * 100;
+		return `${capTime.toFixed(1)} / ${timelineDuration.toFixed(1)} ms (${percent.toFixed(1)}%)`;
+	});
 
 	let sliderValue = $state(0);
 	let appliedColorTheme = $state('');
@@ -162,6 +267,150 @@
 		layerViewer.RenderScene(true);
 	});
 
+	$effect(() => {
+		const [base, factor, minimum, maximum] = pointSizeCalibrationKey.split('|');
+		if (!layerViewer || !initialized || !pointSizeCalibrationKey) return;
+		untrack(() => layerViewer.setPointSizeCalibration(base, factor, minimum, maximum));
+	});
+
+	$effect(() => {
+		const mode = toolpathColorMode;
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setToolpathColorMode(mode));
+	});
+
+	$effect(() => {
+		const visible = endPointsVisible;
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setEndPointsVisible(visible));
+	});
+
+	$effect(() => {
+		const name = colorMapName;
+		const inverted = colorMapInverted;
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setColorMap(name, inverted));
+	});
+
+	$effect(() => {
+		const ranges = colorRanges;
+		if (!layerViewer || !initialized) return;
+		untrack(() => {
+			for (const mode of Object.keys(LEGEND_MODES) as LegendMode[])
+				layerViewer.setColorRange(mode, ranges[mode].min, ranges[mode].max);
+		});
+	});
+
+	// A single value (for example one nominal power or speed) is shown from zero.
+	function rangeFromZeroIfSingle(range: ColorRange | null): ColorRange {
+		if (!range) return { min: 0, max: 1 };
+		if (range.max > range.min) return range;
+		return { min: 0, max: range.max > 0 ? range.max : 1 };
+	}
+
+	function setEditedRange(mode: LegendMode, range: ColorRange | null) {
+		if (mode === 'time') editedTimeRange = range;
+		else if (mode === 'velocity') editedVelocityRange = range;
+		else editedPowerRange = range;
+	}
+
+	function cycleToolpathColorMode() {
+		const index = TOOLPATH_COLOR_MODES.findIndex((entry) => entry.mode === toolpathColorMode);
+		toolpathColorMode = TOOLPATH_COLOR_MODES[(index + 1) % TOOLPATH_COLOR_MODES.length].mode;
+		colorMapMenuOpen = false;
+	}
+
+	function formatRangeValue(value: number): number {
+		return Number(value.toPrecision(6));
+	}
+
+	function onLegendRangeChange(bound: 'min' | 'max', event: Event) {
+		const value = Number((event.target as HTMLInputElement).value);
+		if (!Number.isFinite(value) || !legendMode) return;
+		const current = legendRange;
+		setEditedRange(legendMode, bound === 'min' ? { min: value, max: current.max } : { min: current.min, max: value });
+	}
+
+	function resetLegendRange() {
+		if (legendMode) setEditedRange(legendMode, null);
+	}
+
+	function selectColorMap(name: string) {
+		colorMapName = name;
+		colorMapMenuOpen = false;
+	}
+
+	function readPowerRange(data: any): ColorRange | null {
+		const minimum = Number(data?.powerrangemin);
+		const maximum = Number(data?.powerrangemax);
+		if (data?.powerrangemin === undefined || data?.powerrangemax === undefined) return null;
+		if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return null;
+		return { min: minimum, max: maximum };
+	}
+
+	function refreshTimeline() {
+		if (!layerViewer) return;
+		timelineDuration = Number(layerViewer.getTimelineDuration()) || 0;
+		timingSource = String(layerViewer.getTimingSource());
+		timingMatchRatio = Number(layerViewer.getTimingMatchRatio()) || 0;
+	}
+
+	function setTimeSliderValue(value: number) {
+		timeSliderValue = Math.min(Math.max(value, 0), TIME_SLIDER_STEPS);
+		if (layerViewer) layerViewer.setTimeCapFraction(timeSliderValue / TIME_SLIDER_STEPS);
+	}
+
+	function onTimeSliderInput(event: Event) {
+		stopPlayback();
+		clearHover();
+		setTimeSliderValue(parseInt((event.target as HTMLInputElement).value));
+	}
+
+	function moveToStart() {
+		stopPlayback();
+		clearHover();
+		setTimeSliderValue(0);
+	}
+
+	function moveToEnd() {
+		stopPlayback();
+		clearHover();
+		setTimeSliderValue(TIME_SLIDER_STEPS);
+	}
+
+	// Plays the layer in real time; starts over if the slider is already at the end.
+	let playing = $state(false);
+	let playbackFrame = 0;
+	let playbackLastStamp = 0;
+
+	function startPlayback() {
+		if (playing || !layerViewer || timelineDuration <= 0) return;
+		clearHover();
+		if (timeSliderValue >= TIME_SLIDER_STEPS) setTimeSliderValue(0);
+		playing = true;
+		playbackLastStamp = performance.now();
+		playbackFrame = requestAnimationFrame(stepPlayback);
+	}
+
+	function stepPlayback(stamp: number) {
+		if (!playing) return;
+		const elapsed = Math.max(stamp - playbackLastStamp, 0);
+		playbackLastStamp = stamp;
+		const next = timelineDuration > 0 ? timeSliderValue + (elapsed / timelineDuration) * TIME_SLIDER_STEPS : TIME_SLIDER_STEPS;
+		setTimeSliderValue(next);
+		if (next >= TIME_SLIDER_STEPS) {
+			stopPlayback();
+			return;
+		}
+		playbackFrame = requestAnimationFrame(stepPlayback);
+	}
+
+	function stopPlayback() {
+		playing = false;
+		if (playbackFrame) cancelAnimationFrame(playbackFrame);
+		playbackFrame = 0;
+	}
+
 	function ensureInit() {
 		if (initialized || !containerEl || !app) return;
 		const w = containerEl.clientWidth, h = containerEl.clientHeight;
@@ -179,6 +428,7 @@
 			layerViewer.onTransformChanged = () => { viewVersion = ++transformChangeCount; };
 			layerViewer.toolpathVisible = toolpathVisible;
 			layerViewer.showLaserOffPoints = showLaserOffPoints;
+			layerViewer.setTimeCapFraction(timeSliderValue / TIME_SLIDER_STEPS);
 
 			glInstance.setupDOMElement(containerEl);
 			layerViewer.updateSize(w, h);
@@ -221,6 +471,15 @@
 			platform.displayed_build !== platform.builduuid ||
 			platform.displayed_partstateversion !== platform.partstateversion) {
 
+			if (platform.displayed_layer !== platform.currentlayer || platform.displayed_build !== platform.builduuid) {
+				stopPlayback();
+				setTimeSliderValue(TIME_SLIDER_STEPS);
+				editedTimeRange = null;
+			}
+			if (platform.displayed_build !== platform.builduuid) {
+				editedPowerRange = null;
+				editedVelocityRange = null;
+			}
 			platform.displayed_layer = platform.currentlayer;
 			platform.displayed_build = platform.builduuid;
 			platform.displayed_partstateversion = platform.partstateversion;
@@ -232,7 +491,12 @@
 			})
 			.then((layerJSON: any) => {
 				if (layerViewer) {
+					clearHover();
+					buildPowerRange = readPowerRange(layerJSON.data);
 					layerViewer.loadLayer(layerJSON.data.segments, layerJSON.data.parts);
+					layerPowerRange = layerViewer.getLayerPowerRange();
+					layerVelocityRange = layerViewer.getLayerVelocityRange();
+					refreshTimeline();
 					layerViewer.RenderScene(true);
 				}
 			})
@@ -252,9 +516,12 @@
 	function clearScatterPlot() {
 		pointsLoaded = false;
 		pointColumns = [];
+		hoverPoint = null;
 		if (!layerViewer) return;
 		layerViewer.clearPointsChannelData(POINT_CHANNEL);
 		layerViewer.clearPoints();
+		layerVelocityRange = layerViewer.getLayerVelocityRange();
+		refreshTimeline();
 		layerViewer.RenderScene(true);
 	}
 
@@ -297,25 +564,18 @@
 			for (const [column, values] of channelColumns) {
 				layerViewer.loadPointsChannelData(POINT_CHANNEL, column, values);
 			}
+			layerViewer.updateTiming();
+			refreshTimeline();
 			pointColumns = channelColumns.map(([column]) => column);
 			pointsLoaded = true;
+			layerVelocityRange = layerViewer.getLayerVelocityRange();
 
-			if (!availableColorModes.some((entry) => entry.mode === pointColorMode)) {
-				pointColorMode = 'unicolor';
-			}
 			layerViewer.showLaserOffPoints = showLaserOffPoints;
-			layerViewer.setColorMode(pointColorMode);
+			layerViewer.setColorMode('toolpath');
 		} catch (err: any) {
 			console.warn('[LayerView] point cloud error:', err?.response || err);
 			if (layerViewer) layerViewer.RenderScene(true);
 		}
-	}
-
-	function cyclePointColorMode() {
-		if (!layerViewer) return;
-		const index = availableColorModes.findIndex((entry) => entry.mode === pointColorMode);
-		pointColorMode = availableColorModes[(index + 1) % availableColorModes.length].mode;
-		layerViewer.setColorMode(pointColorMode);
 	}
 
 	function toggleLaserOffPoints() {
@@ -329,6 +589,7 @@
 	function toggleToolpath() {
 		toolpathVisible = !toolpathVisible;
 		if (!layerViewer) return;
+		clearHover();
 		layerViewer.toolpathVisible = toolpathVisible;
 		layerViewer.updateLoadedLayer();
 		layerViewer.updateTransform();
@@ -424,9 +685,38 @@
 		partdisabled?: boolean;
 		laserindex?: number;
 		lineIndex?: number;
+		powermode?: string;
+		power1?: number | null;
+		power2?: number | null;
+		supportpoints?: { t: number; power: number }[] | null;
+	};
+	// A support point of the highlighted nonlinear power ramp, including both line end points.
+	type RampKnot = { t: number; power: number | null; distance: number };
+	type SupportPointInfo = RampKnot & {
+		lineIndex: number;
+		index: number;
+		count: number;
+		x: number;
+		y: number;
+		length: number;
+		previous: RampKnot | null;
+		next: RampKnot | null;
+	};
+	type PointInfo = {
+		index: number;
+		x: number;
+		y: number;
+		time: number | null;
+		scannerx: number | null;
+		scannery: number | null;
+		laseron: number | null;
+		power: number | null;
+		velocity: number;
 	};
 	let propertiesMode = $state(false);
 	let hoverSegment = $state<SegmentProperties | null>(null);
+	let hoverPoint = $state<PointInfo | null>(null);
+	let hoverSupportPoint = $state<SupportPointInfo | null>(null);
 	let hoverScreen = $state<{ x: number; y: number }>({ x: 0, y: 0 });
 	let pendingHover: { x: number; y: number } | null = null;
 	let hoverRAF = 0;
@@ -449,6 +739,37 @@
 	let namesMode = $state(false);
 	let viewVersion = $state(0);
 	let transformChangeCount = 0;
+	// Viewport position of the hovered point, for the marker ring; follows pan and zoom.
+	let hoverPointScreen = $derived.by((): { x: number; y: number } | null => {
+		viewVersion;
+		if (!hoverPoint || !layerViewer) return null;
+		const machine = layerViewer.toolpathPointToMachine(hoverPoint.x, hoverPoint.y);
+		return layerViewer.machineToScreen(machine.x, machine.y);
+	});
+	let hoverSupportPointScreen = $derived.by((): { x: number; y: number } | null => {
+		viewVersion;
+		if (!hoverSupportPoint || !layerViewer) return null;
+		const machine = layerViewer.toolpathPointToMachine(hoverSupportPoint.x, hoverSupportPoint.y);
+		return layerViewer.machineToScreen(machine.x, machine.y);
+	});
+	let hoverSegmentPower = $derived.by(() => {
+		if (!hoverSegment) return null;
+		const nominal = Number(hoverSegment.laserpower ?? 0);
+		const power1 = hoverSegment.power1 ?? null;
+		const power2 = hoverSegment.power2 ?? null;
+		const modulated = power1 !== null && power2 !== null;
+		const knots = hoverSegment.supportpoints ?? [];
+		const values = modulated ? [power1, power2, ...knots.map((knot) => knot.power)] : [nominal];
+		return {
+			mode: POWER_MODE_CAPTIONS[hoverSegment.powermode ?? ''] ?? hoverSegment.powermode ?? '',
+			nominalOnly: !modulated && (hoverSegment.powermode ?? '') !== '',
+			start: modulated ? power1 : nominal,
+			end: modulated ? power2 : nominal,
+			minimum: Math.min(...values),
+			maximum: Math.max(...values),
+			supportPointCount: knots.length
+		};
+	});
 	let highlightPartUUID = $derived.by(() => {
 		poll.v;
 		const uuid = typeof platform?.highlightpartuuid === 'string' ? platform.highlightpartuuid.toLowerCase() : '';
@@ -502,22 +823,89 @@
 		mousePosition = layerViewer.screenToMachine(event.clientX - box.left, event.clientY - box.top);
 	}
 
+	// A recorded point within a few pixels wins over the toolpath segment below it.
 	function updateHoverSegment(clientX: number, clientY: number) {
 		if (!propertiesMode || dragging || !containerEl || !layerViewer ||
 			typeof layerViewer.pickSegmentAtScreenPoint !== 'function') {
 			hoverSegment = null;
+			hoverPoint = null;
+			hoverSupportPoint = null;
 			return;
 		}
 		const box = containerEl.getBoundingClientRect();
 		const localX = clientX - box.left;
 		const localY = clientY - box.top;
+		hoverScreen = { x: localX, y: localY };
+
+		// Support points of the highlighted ramp are drawn on top, so they win over everything;
+		// the highlight and the hovered segment stay as they are.
+		const supportPoint: SupportPointInfo | null =
+			typeof layerViewer.pickHighlightSupportPoint === 'function'
+				? layerViewer.pickHighlightSupportPoint(localX, localY, SUPPORT_POINT_PICK_TOLERANCE_PX)
+				: null;
+		hoverSupportPoint = supportPoint;
+		if (supportPoint) {
+			hoverPoint = null;
+			return;
+		}
+
+		const pointIndex: number = pointsLoaded ? layerViewer.pickPointAtScreenPoint(localX, localY, POINT_PICK_TOLERANCE_PX) : -1;
+		const pointInfo: PointInfo | null = pointIndex >= 0 ? layerViewer.getPointInfo(pointIndex) : null;
+		if (pointInfo) {
+			hoverPoint = pointInfo;
+			hoverSegment = null;
+			layerViewer.setHighlightLine(-1);
+			return;
+		}
+
+		hoverPoint = null;
 		const result: SegmentProperties | null = layerViewer.pickSegmentAtScreenPoint(localX, localY, 6) ?? null;
 		hoverSegment = result;
-		hoverScreen = { x: localX, y: localY };
 
 		if (typeof layerViewer.setHighlightLine === 'function') {
 			layerViewer.setHighlightLine(result ? (result.lineIndex ?? -1) : -1);
 		}
+	}
+
+	function formatMillimeters(x: number | null, y: number | null): string {
+		if (x === null || y === null) return '–';
+		return `${x.toFixed(3)}, ${y.toFixed(3)} mm`;
+	}
+
+	function formatPowerValue(power: number): string {
+		return power.toLocaleString(undefined, { maximumFractionDigits: 1 });
+	}
+
+	function formatWatts(power: number | null): string {
+		if (power === null || !Number.isFinite(power)) return '–';
+		return `${formatPowerValue(power)} W`;
+	}
+
+	function formatPowerRange(start: number | null, end: number | null): string {
+		if (start === null || end === null || !Number.isFinite(start) || !Number.isFinite(end) ||
+			formatPowerValue(start) === formatPowerValue(end))
+			return formatWatts(start);
+		return `${formatPowerValue(start)} → ${formatPowerValue(end)} W`;
+	}
+
+	// One piece of the piecewise linear ramp between two support points.
+	function formatRampPiece(from: RampKnot | null, to: RampKnot | null): string {
+		if (!from || !to) return '–';
+		return `${formatPowerRange(from.power, to.power)} over ${(to.distance - from.distance).toFixed(3)} mm`;
+	}
+
+	function formatRampGradient(from: RampKnot | null, to: RampKnot | null): string {
+		if (!from || !to || from.power === null || to.power === null) return '–';
+		const distance = to.distance - from.distance;
+		if (!(distance > 0)) return '–';
+		const gradient = (to.power - from.power) / distance;
+		return `${gradient >= 0 ? '+' : ''}${gradient.toLocaleString(undefined, { maximumFractionDigits: 1 })} W/mm`;
+	}
+
+	function clipText(text: string, maxCharacters: number): string {
+		const characters = Array.from(text);
+		if (characters.length <= maxCharacters) return text;
+		return `${characters.slice(0, maxCharacters - 1).join('').trimEnd()}…`;
 	}
 
 	// Segment picking scans every line of the layer, so throttle it to one hit
@@ -538,6 +926,8 @@
 			hoverRAF = 0;
 		}
 		hoverSegment = null;
+		hoverPoint = null;
+		hoverSupportPoint = null;
 		if (layerViewer && typeof layerViewer.clearHighlight === 'function') {
 			layerViewer.clearHighlight();
 		}
@@ -727,6 +1117,7 @@
 
 	onDestroy(() => {
 		module.onDataHasChanged = null;
+		stopPlayback();
 		clearHover();
 		pointLoadCounter++;
 		if (platform) {
@@ -830,23 +1221,33 @@
 			<button
 				class="layerview-btn"
 				onclick={togglePropertiesMode}
-				title="Show segment properties on hover"
-				aria-label="Toggle segment properties inspector"
+				title="Show segment and recorded point properties on hover"
+				aria-label="Toggle segment and point properties inspector"
 				aria-pressed={propertiesMode}
 			>
 				<Info size={16} />
 				<span>Properties</span>
 			</button>
+			<button
+				class="layerview-btn"
+				onclick={cycleToolpathColorMode}
+				title="Change how the toolpath and the recorded points are coloured: profile color, segment type, start time, laser power, velocity or laser on/off"
+				aria-label={`Display mode: ${toolpathColorCaption}. Click to change`}
+			>
+				<Paintbrush size={16} />
+				<span>{toolpathColorCaption}</span>
+			</button>
+			<button
+				class="layerview-btn"
+				onclick={() => (endPointsVisible = !endPointsVisible)}
+				title="Show the start and end points of the toolpath lines"
+				aria-label="Toggle toolpath end points"
+				aria-pressed={endPointsVisible}
+			>
+				<Spline size={16} />
+				<span>End Points</span>
+			</button>
 			{#if pointsLoaded}
-				<button
-					class="layerview-btn"
-					onclick={cyclePointColorMode}
-					title="Change how the recorded points are coloured"
-					aria-label={`Point colours: ${pointColorCaption}. Click to change`}
-				>
-					<Palette size={16} />
-					<span>{pointColorCaption}</span>
-				</button>
 				{#if pointColumns.includes('laseron')}
 					<button
 						class="layerview-btn"
@@ -937,15 +1338,179 @@
 			</svg>
 		{/if}
 
+		<!-- Color map legend of the power and time display modes -->
+		{#if legendVisible}
+			<div
+				class="layerview-legend"
+				class:above-coordinates={coordinateSystemVisible}
+				class:above-time-slider={!coordinateSystemVisible && showTimeSlider && timelineDuration > 0}
+			>
+				<div class="layerview-legend-header">
+					<span class="layerview-legend-title">{legendTitle} [{legendUnit}]</span>
+					<button
+						type="button"
+						class="layerview-legend-btn layerview-legend-preset"
+						onclick={() => (colorMapMenuOpen = !colorMapMenuOpen)}
+						title="Choose a color map"
+						aria-label={`Color map: ${colorMapCaption}. Click to choose`}
+						aria-expanded={colorMapMenuOpen}
+					>
+						<span>{colorMapCaption}</span>
+						<ChevronDown size={12} />
+					</button>
+					<button
+						type="button"
+						class="layerview-legend-btn"
+						onclick={() => (colorMapInverted = !colorMapInverted)}
+						title="Invert the color map"
+						aria-label="Invert the color map"
+						aria-pressed={colorMapInverted}
+					>
+						<ArrowLeftRight size={12} />
+					</button>
+					<button
+						type="button"
+						class="layerview-legend-btn"
+						onclick={resetLegendRange}
+						disabled={!legendRangeEdited}
+						title={legendMode ? LEGEND_MODES[legendMode].resetTitle : ''}
+						aria-label="Reset the range"
+					>
+						<RotateCcw size={12} />
+					</button>
+				</div>
+
+				{#if colorMapMenuOpen}
+					<div class="layerview-legend-menu" role="listbox" aria-label="Color maps">
+						{#each colorMapPresets as preset (preset.name)}
+							<button
+								type="button"
+								class="layerview-legend-menu-item"
+								class:selected={preset.name === colorMapName}
+								role="option"
+								aria-selected={preset.name === colorMapName}
+								onclick={() => selectColorMap(preset.name)}
+							>
+								<span class="layerview-legend-menu-preview" style:background={colorMapCSSGradient(preset.name, colorMapInverted)}></span>
+								<span>{preset.caption}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+
+				<div class="layerview-legend-bar" style:background={colorMapGradient}></div>
+				<div class="layerview-legend-range">
+					<input
+						type="number"
+						step="any"
+						value={formatRangeValue(legendRange.min)}
+						onchange={(event) => onLegendRangeChange('min', event)}
+						aria-label={`Minimum ${legendTitle.toLowerCase()} in ${legendUnit}`}
+					/>
+					<span class="layerview-legend-mid">{formatRangeValue((legendRange.min + legendRange.max) / 2)}</span>
+					<input
+						type="number"
+						step="any"
+						value={formatRangeValue(legendRange.max)}
+						onchange={(event) => onLegendRangeChange('max', event)}
+						aria-label={`Maximum ${legendTitle.toLowerCase()} in ${legendUnit}`}
+					/>
+				</div>
+				{#if legendMode === 'power' && pointsLoaded && pointColumns.includes('power')}
+					<div class="layerview-legend-note">Recorded points: raw power, layer minimum to maximum</div>
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Live cursor position readout (machine coordinates, mm) -->
 		{#if mousePosition}
-			<div class="layerview-mouse-pos">
+			<div class="layerview-mouse-pos" class:above-time-slider={showTimeSlider && timelineDuration > 0}>
 				X: {mousePosition.x.toFixed(2)} &middot; Y: {mousePosition.y.toFixed(2)} mm
 			</div>
 		{/if}
 
-		<!-- Segment property inspector popup (Properties toggle) -->
-		{#if propertiesMode && hoverSegment}
+		<!-- Recorded point inspector popup (Properties toggle) -->
+		{#if propertiesMode && hoverPoint}
+			{#if hoverPointScreen}
+				<div
+					class="layerview-point-marker"
+					style={`left: ${hoverPointScreen.x}px; top: ${hoverPointScreen.y}px;`}
+				></div>
+			{/if}
+			<div
+				class="layerview-segment-popup"
+				style={`left: ${hoverScreen.x + 14}px; top: ${hoverScreen.y + 14}px;`}
+			>
+				<div class="layerview-segment-popup-title">Sample #{hoverPoint.index}</div>
+				<dl class="layerview-segment-popup-list">
+					{#if hoverPoint.time !== null}
+						<dt>Time</dt>
+						<dd>{hoverPoint.time.toFixed(2)} ms</dd>
+					{/if}
+					<dt>Build X/Y</dt>
+					<dd>{formatMillimeters(hoverPoint.x, hoverPoint.y)}</dd>
+					{#if hoverPoint.scannerx !== null && hoverPoint.scannery !== null}
+						<dt>Scanner X/Y</dt>
+						<dd>{formatMillimeters(hoverPoint.scannerx, hoverPoint.scannery)}</dd>
+					{/if}
+					{#if hoverPoint.laseron !== null}
+						<dt>Laser</dt>
+						<dd>{hoverPoint.laseron !== 0 ? 'On' : 'Off'}</dd>
+					{/if}
+					{#if hoverPoint.power !== null}
+						<dt>Power (raw)</dt>
+						<dd>{Math.round(hoverPoint.power).toLocaleString()}</dd>
+					{/if}
+					<dt>Velocity</dt>
+					<dd>{Math.round(hoverPoint.velocity).toLocaleString()} mm/s</dd>
+				</dl>
+			</div>
+		{/if}
+
+		<!-- Support point of the highlighted nonlinear power ramp (Properties toggle) -->
+		{#if propertiesMode && hoverSupportPoint}
+			{#if hoverSupportPointScreen}
+				<div
+					class="layerview-point-marker layerview-support-point-marker"
+					style={`left: ${hoverSupportPointScreen.x}px; top: ${hoverSupportPointScreen.y}px;`}
+				></div>
+			{/if}
+			<div
+				class="layerview-segment-popup"
+				style={`left: ${hoverScreen.x + 14}px; top: ${hoverScreen.y + 14}px;`}
+			>
+				<div class="layerview-segment-popup-title">
+					{#if hoverSupportPoint.index === 0}
+						Start point
+					{:else if hoverSupportPoint.index === hoverSupportPoint.count - 1}
+						End point
+					{:else}
+						Support point {hoverSupportPoint.index} of {hoverSupportPoint.count - 2}
+					{/if}
+				</div>
+				<dl class="layerview-segment-popup-list">
+					<dt>Laser power</dt>
+					<dd>{formatWatts(hoverSupportPoint.power)}</dd>
+					<dt>Parameter t</dt>
+					<dd>{hoverSupportPoint.t.toFixed(3)}</dd>
+					<dt>Distance</dt>
+					<dd>{hoverSupportPoint.distance.toFixed(3)} / {hoverSupportPoint.length.toFixed(3)} mm</dd>
+					{#if hoverSupportPoint.previous}
+						<dt>Incoming</dt>
+						<dd>{formatRampPiece(hoverSupportPoint.previous, hoverSupportPoint)}</dd>
+						<dt>Slope</dt>
+						<dd>{formatRampGradient(hoverSupportPoint.previous, hoverSupportPoint)}</dd>
+					{/if}
+					{#if hoverSupportPoint.next}
+						<dt>Outgoing</dt>
+						<dd>{formatRampPiece(hoverSupportPoint, hoverSupportPoint.next)}</dd>
+						<dt>Slope</dt>
+						<dd>{formatRampGradient(hoverSupportPoint, hoverSupportPoint.next)}</dd>
+					{/if}
+				</dl>
+			</div>
+		{:else if propertiesMode && hoverSegment}
+			<!-- Segment property inspector popup (Properties toggle) -->
 			<div
 				class="layerview-segment-popup"
 				style={`left: ${hoverScreen.x + 14}px; top: ${hoverScreen.y + 14}px;`}
@@ -954,8 +1519,18 @@
 					<div class="layerview-segment-popup-title">{hoverSegment.profilename}</div>
 				{/if}
 				<dl class="layerview-segment-popup-list">
-					<dt>Laser power</dt>
-					<dd>{Number(hoverSegment.laserpower ?? 0).toLocaleString()} W</dd>
+					{#if hoverSegmentPower}
+						<dt>Power mode</dt>
+						<dd>{hoverSegmentPower.mode}{hoverSegmentPower.nominalOnly ? ' (no factors)' : ''}</dd>
+						<dt>Laser power</dt>
+						<dd>{formatPowerRange(hoverSegmentPower.start, hoverSegmentPower.end)}</dd>
+						{#if hoverSegmentPower.supportPointCount > 0}
+							<dt>Power range</dt>
+							<dd>{formatPowerRange(hoverSegmentPower.minimum, hoverSegmentPower.maximum)}</dd>
+							<dt>Support points</dt>
+							<dd>{hoverSegmentPower.supportPointCount}</dd>
+						{/if}
+					{/if}
 					<dt>Laser speed</dt>
 					<dd>{Number(hoverSegment.laserspeed ?? 0).toLocaleString()} mm/s</dd>
 					{#if hoverSegment.type}
@@ -968,13 +1543,46 @@
 					{/if}
 					{#if hoverSegment.partname}
 						<dt>Part</dt>
-						<dd>{hoverSegment.partname}{hoverSegment.partdisabled ? ' (disabled)' : ''}</dd>
+						<dd>{clipText(hoverSegment.partname, POPUP_PART_NAME_MAX_CHARACTERS)}{hoverSegment.partdisabled ? ' (disabled)' : ''}</dd>
 					{/if}
 					{#if hoverSegment.partid !== undefined && hoverSegment.partid !== null}
 						<dt>Part ID</dt>
 						<dd>{hoverSegment.partid}</dd>
 					{/if}
 				</dl>
+			</div>
+		{/if}
+
+		<!-- Time slider (horizontal): caps toolpath and recorded points at a fraction of the layer time -->
+		{#if showTimeSlider && timelineDuration > 0}
+			<div class="layerview-time-wrap">
+				<span class="layerview-time-label" title={timingSourceCaption}>
+					t = {timeCapCaption}
+				</span>
+				<input
+					type="range"
+					class="layerview-time-slider"
+					min="0"
+					max={TIME_SLIDER_STEPS}
+					value={timeSliderValue}
+					oninput={onTimeSliderInput}
+					aria-label="Layer time"
+					aria-valuetext={timeCapCaption}
+				/>
+				<div class="layerview-time-buttons">
+					<button class="layerview-time-btn" onclick={moveToStart} title="Move to the start of the layer" aria-label="Move to start">
+						<SkipBack size={14} />
+					</button>
+					<button class="layerview-time-btn" onclick={moveToEnd} title="Move to the end of the layer" aria-label="Move to end">
+						<SkipForward size={14} />
+					</button>
+					<button class="layerview-time-btn" onclick={startPlayback} disabled={playing} title="Play the layer in real time" aria-label="Start playing">
+						<Play size={14} />
+					</button>
+					<button class="layerview-time-btn" onclick={stopPlayback} disabled={!playing} title="Stop playing" aria-label="Stop playing">
+						<Square size={14} />
+					</button>
+				</div>
 			</div>
 		{/if}
 
@@ -1215,6 +1823,139 @@
 	.coordinate-label-y {
 		fill: #22c55e;
 	}
+	.layerview-legend {
+		position: absolute;
+		left: 8px;
+		bottom: 8px;
+		width: 260px;
+		padding: 6px 8px;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.72);
+		color: white;
+		font-size: 11px;
+		z-index: 11;
+	}
+	/* Above the coordinate indicator (bottom 8px + 64px) or the time slider. */
+	.layerview-legend.above-coordinates {
+		bottom: 80px;
+	}
+	.layerview-legend.above-time-slider {
+		bottom: 44px;
+	}
+	.layerview-legend-header {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-bottom: 5px;
+	}
+	.layerview-legend-title {
+		flex: 1;
+		min-width: 0;
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.layerview-legend-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 3px;
+		height: 20px;
+		min-width: 22px;
+		padding: 0 5px;
+		border: 1px solid rgba(255, 255, 255, 0.25);
+		border-radius: 3px;
+		background: rgba(255, 255, 255, 0.08);
+		color: white;
+		font-size: 11px;
+		cursor: pointer;
+	}
+	.layerview-legend-btn:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.2);
+	}
+	.layerview-legend-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.layerview-legend-btn[aria-pressed='true'] {
+		background-color: var(--primary, #2563eb);
+	}
+	.layerview-legend-preset span {
+		max-width: 110px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.layerview-legend-menu {
+		position: absolute;
+		left: 0;
+		bottom: calc(100% + 4px);
+		width: 100%;
+		padding: 4px;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.88);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+	}
+	.layerview-legend-menu-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 4px 6px;
+		border: none;
+		border-radius: 3px;
+		background: transparent;
+		color: white;
+		font-size: 11px;
+		text-align: left;
+		cursor: pointer;
+	}
+	.layerview-legend-menu-item:hover,
+	.layerview-legend-menu-item.selected {
+		background: rgba(255, 255, 255, 0.15);
+	}
+	.layerview-legend-menu-preview {
+		flex: none;
+		width: 90px;
+		height: 10px;
+		border-radius: 2px;
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+	}
+	.layerview-legend-bar {
+		height: 12px;
+		border-radius: 2px;
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+	}
+	.layerview-legend-range {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+		margin-top: 4px;
+	}
+	.layerview-legend-range input {
+		width: 72px;
+		padding: 1px 4px;
+		border: 1px solid rgba(255, 255, 255, 0.35);
+		border-radius: 3px;
+		background: rgba(255, 255, 255, 0.95);
+		color: #111111;
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+	}
+	.layerview-legend-range input:last-child {
+		text-align: right;
+	}
+	.layerview-legend-mid {
+		color: rgba(255, 255, 255, 0.75);
+		font-variant-numeric: tabular-nums;
+	}
+	.layerview-legend-note {
+		margin-top: 4px;
+		color: rgba(255, 255, 255, 0.75);
+		font-size: 10px;
+	}
 	.layerview-mouse-pos {
 		position: absolute;
 		/* Shifted left so it clears the vertical layer slider on the right edge. */
@@ -1229,10 +1970,78 @@
 		pointer-events: none;
 		z-index: 10;
 	}
+	.layerview-mouse-pos.above-time-slider {
+		bottom: 48px;
+	}
+	.layerview-time-wrap {
+		position: absolute;
+		/* Between the coordinate indicator (bottom-left) and the layer slider (right edge). */
+		left: 80px;
+		right: 40px;
+		bottom: 8px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		z-index: 10;
+	}
+	.layerview-time-label {
+		flex: none;
+		min-width: 190px;
+		padding: 4px 10px;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.65);
+		color: white;
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.layerview-time-slider {
+		flex: 1;
+		min-width: 0;
+		accent-color: var(--primary, #2563eb);
+	}
+	.layerview-time-buttons {
+		flex: none;
+		display: flex;
+		gap: 4px;
+	}
+	.layerview-time-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 24px;
+		border: none;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.65);
+		color: white;
+		cursor: pointer;
+	}
+	.layerview-time-btn:hover:not(:disabled) {
+		background: rgba(0, 0, 0, 0.85);
+	}
+	.layerview-time-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.layerview-point-marker {
+		position: absolute;
+		width: 14px;
+		height: 14px;
+		margin: -7px 0 0 -7px;
+		border: 2px solid #00e5ff;
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+		pointer-events: none;
+		z-index: 15;
+	}
+	.layerview-support-point-marker {
+		border-color: #ffb300;
+	}
 	.layerview-segment-popup {
 		position: absolute;
 		min-width: 150px;
-		max-width: 240px;
+		max-width: 280px;
 		padding: 8px 10px;
 		border-radius: 6px;
 		background: rgba(0, 0, 0, 0.82);
@@ -1252,16 +2061,21 @@
 	}
 	.layerview-segment-popup-list {
 		display: grid;
-		grid-template-columns: auto auto;
+		grid-template-columns: auto minmax(0, 1fr);
 		gap: 2px 12px;
 		margin: 0;
 	}
 	.layerview-segment-popup-list dt {
 		color: rgba(255, 255, 255, 0.65);
+		white-space: nowrap;
 	}
 	.layerview-segment-popup-list dd {
 		margin: 0;
+		min-width: 0;
+		overflow: hidden;
 		text-align: right;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
 	}
 	.layerview-slider-wrap {

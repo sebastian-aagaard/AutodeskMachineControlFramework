@@ -59,6 +59,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define AMC_API_PROTOCOL_USERPREFERENCES "com.autodesk.machinecontrol.userpreferences"
 
 #define AMC_API_CONTENTTYPE "application/json"
+#define AMC_API_CONTENTTYPE_CSV "text/csv"
+#define AMC_API_CONTENTTYPE_PARQUET "application/vnd.apache.parquet"
+
+#define AMC_API_POINTCLOUD_EXPORT_CSV "csv"
+#define AMC_API_POINTCLOUD_EXPORT_PARQUET "parquet"
 
 // Frontend reactivity metrics (see amc_api_handler_frontend). The server reports its
 // build time for the status payload; the client folds it into aggregated metrics windows.
@@ -244,6 +249,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define AMC_API_KEY_UI_TRANSLATIONX "translationx"
 #define AMC_API_KEY_UI_TRANSLATIONY "translationy"
 #define AMC_API_KEY_UI_SHOWCOORDINATESYSTEM "showcoordinatesystem"
+#define AMC_API_KEY_UI_SHOWTIMESLIDER "showtimeslider"
+#define AMC_API_KEY_UI_POINTSIZEBASE "pointsizebase"
+#define AMC_API_KEY_UI_POINTSIZEFACTOR "pointsizefactor"
+#define AMC_API_KEY_UI_POINTSIZEMIN "pointsizemin"
+#define AMC_API_KEY_UI_POINTSIZEMAX "pointsizemax"
+#define AMC_API_KEY_UI_POWERRANGEMIN "powerrangemin"
+#define AMC_API_KEY_UI_POWERRANGEMAX "powerrangemax"
 #define AMC_API_KEY_UI_BASEIMAGERESOURCE "baseimageresource"
 #define AMC_API_KEY_UI_HEADLINE "headline"
 #define AMC_API_KEY_UI_TITLE "title"
@@ -449,6 +461,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define AMC_API_KEY_X "x"
 #define AMC_API_KEY_Y "y"
 #define AMC_API_KEY_LASERPOWER "laserpower"
+#define AMC_API_KEY_POWERMODE "powermode"
+#define AMC_API_KEY_POWERMODE_CONSTANT "constant"
+#define AMC_API_KEY_POWERMODE_LINEAR "linear"
+#define AMC_API_KEY_POWERMODE_NONLINEAR "nonlinear"
+#define AMC_API_KEY_POWERS "powers"
+#define AMC_API_KEY_POWERSUBCOUNTS "powersubcounts"
+#define AMC_API_KEY_POWERSUBS "powersubs"
+#define AMC_API_KEY_POWERSTARTS "powerstarts"
+#define AMC_API_KEY_POWERRANGEMIN "powerrangemin"
+#define AMC_API_KEY_POWERRANGEMAX "powerrangemax"
 #define AMC_API_KEY_LASERSPEED "laserspeed"
 #define AMC_API_KEY_PARTID "partid"
 #define AMC_API_KEY_PARTUUID "partuuid"

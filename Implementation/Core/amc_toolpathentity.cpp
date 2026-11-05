@@ -402,6 +402,117 @@ namespace AMC {
 		return iIter->second;
 	}
 
+	uint32_t CToolpathEntity::getProfileCount()
+	{
+		std::lock_guard<std::mutex> lockGuard(m_Mutex);
+
+		if (m_pToolpath.get() == nullptr)
+			throw ELibMCInterfaceException(LIBMC_ERROR_BUILDHASNOTOOLPATH);
+
+		return m_pToolpath->GetProfileCount();
+	}
+
+	void CToolpathEntity::getProfileInfo(uint32_t nProfileIndex, std::string& sUUID, std::string& sName)
+	{
+		std::lock_guard<std::mutex> lockGuard(m_Mutex);
+
+		if (m_pToolpath.get() == nullptr)
+			throw ELibMCInterfaceException(LIBMC_ERROR_BUILDHASNOTOOLPATH);
+
+		if (nProfileIndex >= m_pToolpath->GetProfileCount())
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDTOOLPATHPROFILEINDEX, std::to_string(nProfileIndex));
+
+		auto pProfile = m_pToolpath->GetProfile(nProfileIndex);
+		sUUID = pProfile->GetUUID();
+		sName = pProfile->GetName();
+	}
+
+	uint32_t CToolpathEntity::getProfileModifierCount(uint32_t nProfileIndex)
+	{
+		std::lock_guard<std::mutex> lockGuard(m_Mutex);
+
+		if (m_pToolpath.get() == nullptr)
+			throw ELibMCInterfaceException(LIBMC_ERROR_BUILDHASNOTOOLPATH);
+
+		if (nProfileIndex >= m_pToolpath->GetProfileCount())
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDTOOLPATHPROFILEINDEX, std::to_string(nProfileIndex));
+
+		return m_pToolpath->GetProfile(nProfileIndex)->GetModifierCount();
+	}
+
+	void CToolpathEntity::getProfileModifierInfo(uint32_t nProfileIndex, uint32_t nModifierIndex, std::string& sNameSpace, std::string& sValueName, LibMCEnv::eToolpathProfileModificationType& modificationType, LibMCEnv::eToolpathProfileModificationFactor& modificationFactor, double& dMinValue, double& dMaxValue)
+	{
+		std::lock_guard<std::mutex> lockGuard(m_Mutex);
+
+		if (m_pToolpath.get() == nullptr)
+			throw ELibMCInterfaceException(LIBMC_ERROR_BUILDHASNOTOOLPATH);
+
+		if (nProfileIndex >= m_pToolpath->GetProfileCount())
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDTOOLPATHPROFILEINDEX, std::to_string(nProfileIndex));
+
+		auto pProfile = m_pToolpath->GetProfile(nProfileIndex);
+		if (nModifierIndex >= pProfile->GetModifierCount())
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDTOOLPATHMODIFIERINDEX, std::to_string(nModifierIndex));
+
+		Lib3MF::eToolpathProfileModificationType modificationType3MF = Lib3MF::eToolpathProfileModificationType::NoModification;
+		Lib3MF::eToolpathProfileModificationFactor modificationFactor3MF = Lib3MF::eToolpathProfileModificationFactor::Unknown;
+		pProfile->GetModifierInformationByIndex(nModifierIndex, sNameSpace, sValueName, modificationType3MF, modificationFactor3MF, dMinValue, dMaxValue);
+
+		modificationType = CToolpathLayerData::convertModificationType(modificationType3MF);
+		modificationFactor = CToolpathLayerData::convertModificationFactor(modificationFactor3MF);
+	}
+
+	bool CToolpathEntity::getProfileValueRange(const std::string& sNameSpace, const std::string& sValueName, double& dMinValue, double& dMaxValue)
+	{
+		std::lock_guard<std::mutex> lockGuard(m_Mutex);
+
+		dMinValue = 0.0;
+		dMaxValue = 0.0;
+
+		if (m_pToolpath.get() == nullptr)
+			return false;
+
+		bool bFound = false;
+		auto includeValue = [&](double dValue) {
+			if (!bFound) {
+				dMinValue = dValue;
+				dMaxValue = dValue;
+				bFound = true;
+			}
+			else {
+				if (dValue < dMinValue)
+					dMinValue = dValue;
+				if (dValue > dMaxValue)
+					dMaxValue = dValue;
+			}
+		};
+
+		uint32_t nProfileCount = m_pToolpath->GetProfileCount();
+		for (uint32_t nProfileIndex = 0; nProfileIndex < nProfileCount; nProfileIndex++) {
+			auto pProfile = m_pToolpath->GetProfile(nProfileIndex);
+			if (pProfile->HasParameterValue(sNameSpace, sValueName))
+				includeValue(pProfile->GetParameterDoubleValue(sNameSpace, sValueName));
+
+			uint32_t nModifierCount = pProfile->GetModifierCount();
+			for (uint32_t nModifierIndex = 0; nModifierIndex < nModifierCount; nModifierIndex++) {
+				std::string sModifierNameSpace;
+				std::string sModifierValueName;
+				Lib3MF::eToolpathProfileModificationType modificationType3MF = Lib3MF::eToolpathProfileModificationType::NoModification;
+				Lib3MF::eToolpathProfileModificationFactor modificationFactor3MF = Lib3MF::eToolpathProfileModificationFactor::Unknown;
+				double dModifierMin = 0.0;
+				double dModifierMax = 0.0;
+				pProfile->GetModifierInformationByIndex(nModifierIndex, sModifierNameSpace, sModifierValueName, modificationType3MF, modificationFactor3MF, dModifierMin, dModifierMax);
+
+				if ((sModifierNameSpace == sNameSpace) && (sModifierValueName == sValueName) && (modificationType3MF != Lib3MF::eToolpathProfileModificationType::NoModification)) {
+					includeValue(dModifierMin);
+					includeValue(dModifierMax);
+				}
+			}
+		}
+
+		return bFound;
+	}
+
 	void CToolpathEntity::registerCustomSegmentAttribute(const std::string& sNameSpace, const std::string& sAttributeName, const LibMCEnv::eToolpathAttributeType eAttributeType)
 	{
 		std::lock_guard<std::mutex> lockGuard(m_Mutex);

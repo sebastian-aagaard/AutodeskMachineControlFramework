@@ -9530,6 +9530,126 @@ LibMCEnvResult libmcenv_toolpathlayer_getsegmentprofiletypedmodificationtype(Lib
 	}
 }
 
+LibMCEnvResult libmcenv_toolpathlayer_getsegmentprofilemodifiercount(LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv_uint32 * pModifierCount)
+{
+	IBase* pIBaseClass = (IBase *)pToolpathLayer;
+
+	try {
+		if (pModifierCount == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IToolpathLayer* pIToolpathLayer = dynamic_cast<IToolpathLayer*>(pIBaseClass);
+		if (!pIToolpathLayer)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pModifierCount = pIToolpathLayer->GetSegmentProfileModifierCount(nSegmentIndex);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_toolpathlayer_getsegmentprofilemodifierinfo(LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv_uint32 nModifierIndex, const LibMCEnv_uint32 nNamespaceBufferSize, LibMCEnv_uint32* pNamespaceNeededChars, char * pNamespaceBuffer, const LibMCEnv_uint32 nValueNameBufferSize, LibMCEnv_uint32* pValueNameNeededChars, char * pValueNameBuffer, eLibMCEnvToolpathProfileModificationType * pModificationType, eLibMCEnvToolpathProfileModificationFactor * pModificationFactor, LibMCEnv_double * pMinValue, LibMCEnv_double * pMaxValue)
+{
+	IBase* pIBaseClass = (IBase *)pToolpathLayer;
+
+	try {
+		if ( (!pNamespaceBuffer) && !(pNamespaceNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if ( (!pValueNameBuffer) && !(pValueNameNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (!pModificationType)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (!pModificationFactor)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (!pMinValue)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (!pMaxValue)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sNamespace("");
+		std::string sValueName("");
+		IToolpathLayer* pIToolpathLayer = dynamic_cast<IToolpathLayer*>(pIBaseClass);
+		if (!pIToolpathLayer)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pNamespaceBuffer == nullptr) || (pValueNameBuffer == nullptr);
+		if (isCacheCall) {
+			pIToolpathLayer->GetSegmentProfileModifierInfo(nSegmentIndex, nModifierIndex, sNamespace, sValueName, *pModificationType, *pModificationFactor, *pMinValue, *pMaxValue);
+
+			pIToolpathLayer->_setCache (new ParameterCache_6<std::string, std::string, LibMCEnv::eToolpathProfileModificationType, LibMCEnv::eToolpathProfileModificationFactor, LibMCEnv_double, LibMCEnv_double> (sNamespace, sValueName, *pModificationType, *pModificationFactor, *pMinValue, *pMaxValue));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_6<std::string, std::string, LibMCEnv::eToolpathProfileModificationType, LibMCEnv::eToolpathProfileModificationFactor, LibMCEnv_double, LibMCEnv_double>*> (pIToolpathLayer->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+			cache->retrieveData (sNamespace, sValueName, *pModificationType, *pModificationFactor, *pMinValue, *pMaxValue);
+			pIToolpathLayer->_setCache (nullptr);
+		}
+		
+		if (pNamespaceNeededChars)
+			*pNamespaceNeededChars = (LibMCEnv_uint32) (sNamespace.size()+1);
+		if (pNamespaceBuffer) {
+			if (sNamespace.size() >= nNamespaceBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iNamespace = 0; iNamespace < sNamespace.size(); iNamespace++)
+				pNamespaceBuffer[iNamespace] = sNamespace[iNamespace];
+			pNamespaceBuffer[sNamespace.size()] = 0;
+		}
+		if (pValueNameNeededChars)
+			*pValueNameNeededChars = (LibMCEnv_uint32) (sValueName.size()+1);
+		if (pValueNameBuffer) {
+			if (sValueName.size() >= nValueNameBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iValueName = 0; iValueName < sValueName.size(); iValueName++)
+				pValueNameBuffer[iValueName] = sValueName[iValueName];
+			pValueNameBuffer[sValueName.size()] = 0;
+		}
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_toolpathlayer_segmenthasmodificationfactors(LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, eLibMCEnvToolpathProfileModificationFactor eModificationFactor, bool * pHasFactors)
+{
+	IBase* pIBaseClass = (IBase *)pToolpathLayer;
+
+	try {
+		if (pHasFactors == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IToolpathLayer* pIToolpathLayer = dynamic_cast<IToolpathLayer*>(pIBaseClass);
+		if (!pIToolpathLayer)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pHasFactors = pIToolpathLayer->SegmentHasModificationFactors(nSegmentIndex, eModificationFactor);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 LibMCEnvResult libmcenv_toolpathlayer_getsegmentpartuuid(LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, const LibMCEnv_uint32 nPartUUIDBufferSize, LibMCEnv_uint32* pPartUUIDNeededChars, char * pPartUUIDBuffer)
 {
 	IBase* pIBaseClass = (IBase *)pToolpathLayer;
@@ -9750,6 +9870,32 @@ LibMCEnvResult libmcenv_toolpathlayer_evaluatetypedhatchprofileinterpolation(Lib
 			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
 		
 		pIToolpathLayer->EvaluateTypedHatchProfileInterpolation(nSegmentIndex, eValueType, nCountArrayBufferSize, pCountArrayNeededCount, pCountArrayBuffer, nEvaluationDataBufferSize, pEvaluationDataNeededCount, pEvaluationDataBuffer);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_toolpathlayer_evaluatetypedpolylineprofilemodifier(LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, eLibMCEnvToolpathProfileValueType eValueType, const LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv_double * pEvaluationDataBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pToolpathLayer;
+
+	try {
+		if ((!pEvaluationDataBuffer) && !(pEvaluationDataNeededCount))
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IToolpathLayer* pIToolpathLayer = dynamic_cast<IToolpathLayer*>(pIBaseClass);
+		if (!pIToolpathLayer)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		pIToolpathLayer->EvaluateTypedPolylineProfileModifier(nSegmentIndex, eValueType, nEvaluationDataBufferSize, pEvaluationDataNeededCount, pEvaluationDataBuffer);
 
 		return LIBMCENV_SUCCESS;
 	}
@@ -10394,6 +10540,186 @@ LibMCEnvResult libmcenv_toolpathaccessor_findpartbyuuid(LibMCEnv_ToolpathAccesso
 		pBasePart = pIToolpathAccessor->FindPartByUUID(sPartUUID);
 
 		*pPart = (IBase*)(pBasePart);
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_toolpathaccessor_getprofilecount(LibMCEnv_ToolpathAccessor pToolpathAccessor, LibMCEnv_uint32 * pProfileCount)
+{
+	IBase* pIBaseClass = (IBase *)pToolpathAccessor;
+
+	try {
+		if (pProfileCount == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IToolpathAccessor* pIToolpathAccessor = dynamic_cast<IToolpathAccessor*>(pIBaseClass);
+		if (!pIToolpathAccessor)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pProfileCount = pIToolpathAccessor->GetProfileCount();
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_toolpathaccessor_getprofileinfo(LibMCEnv_ToolpathAccessor pToolpathAccessor, LibMCEnv_uint32 nProfileIndex, const LibMCEnv_uint32 nUUIDBufferSize, LibMCEnv_uint32* pUUIDNeededChars, char * pUUIDBuffer, const LibMCEnv_uint32 nNameBufferSize, LibMCEnv_uint32* pNameNeededChars, char * pNameBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pToolpathAccessor;
+
+	try {
+		if ( (!pUUIDBuffer) && !(pUUIDNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if ( (!pNameBuffer) && !(pNameNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sUUID("");
+		std::string sName("");
+		IToolpathAccessor* pIToolpathAccessor = dynamic_cast<IToolpathAccessor*>(pIBaseClass);
+		if (!pIToolpathAccessor)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pUUIDBuffer == nullptr) || (pNameBuffer == nullptr);
+		if (isCacheCall) {
+			pIToolpathAccessor->GetProfileInfo(nProfileIndex, sUUID, sName);
+
+			pIToolpathAccessor->_setCache (new ParameterCache_2<std::string, std::string> (sUUID, sName));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_2<std::string, std::string>*> (pIToolpathAccessor->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+			cache->retrieveData (sUUID, sName);
+			pIToolpathAccessor->_setCache (nullptr);
+		}
+		
+		if (pUUIDNeededChars)
+			*pUUIDNeededChars = (LibMCEnv_uint32) (sUUID.size()+1);
+		if (pUUIDBuffer) {
+			if (sUUID.size() >= nUUIDBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iUUID = 0; iUUID < sUUID.size(); iUUID++)
+				pUUIDBuffer[iUUID] = sUUID[iUUID];
+			pUUIDBuffer[sUUID.size()] = 0;
+		}
+		if (pNameNeededChars)
+			*pNameNeededChars = (LibMCEnv_uint32) (sName.size()+1);
+		if (pNameBuffer) {
+			if (sName.size() >= nNameBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iName = 0; iName < sName.size(); iName++)
+				pNameBuffer[iName] = sName[iName];
+			pNameBuffer[sName.size()] = 0;
+		}
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_toolpathaccessor_getprofilemodifiercount(LibMCEnv_ToolpathAccessor pToolpathAccessor, LibMCEnv_uint32 nProfileIndex, LibMCEnv_uint32 * pModifierCount)
+{
+	IBase* pIBaseClass = (IBase *)pToolpathAccessor;
+
+	try {
+		if (pModifierCount == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IToolpathAccessor* pIToolpathAccessor = dynamic_cast<IToolpathAccessor*>(pIBaseClass);
+		if (!pIToolpathAccessor)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pModifierCount = pIToolpathAccessor->GetProfileModifierCount(nProfileIndex);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_toolpathaccessor_getprofilemodifierinfo(LibMCEnv_ToolpathAccessor pToolpathAccessor, LibMCEnv_uint32 nProfileIndex, LibMCEnv_uint32 nModifierIndex, const LibMCEnv_uint32 nNamespaceBufferSize, LibMCEnv_uint32* pNamespaceNeededChars, char * pNamespaceBuffer, const LibMCEnv_uint32 nValueNameBufferSize, LibMCEnv_uint32* pValueNameNeededChars, char * pValueNameBuffer, eLibMCEnvToolpathProfileModificationType * pModificationType, eLibMCEnvToolpathProfileModificationFactor * pModificationFactor, LibMCEnv_double * pMinValue, LibMCEnv_double * pMaxValue)
+{
+	IBase* pIBaseClass = (IBase *)pToolpathAccessor;
+
+	try {
+		if ( (!pNamespaceBuffer) && !(pNamespaceNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if ( (!pValueNameBuffer) && !(pValueNameNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (!pModificationType)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (!pModificationFactor)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (!pMinValue)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (!pMaxValue)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sNamespace("");
+		std::string sValueName("");
+		IToolpathAccessor* pIToolpathAccessor = dynamic_cast<IToolpathAccessor*>(pIBaseClass);
+		if (!pIToolpathAccessor)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pNamespaceBuffer == nullptr) || (pValueNameBuffer == nullptr);
+		if (isCacheCall) {
+			pIToolpathAccessor->GetProfileModifierInfo(nProfileIndex, nModifierIndex, sNamespace, sValueName, *pModificationType, *pModificationFactor, *pMinValue, *pMaxValue);
+
+			pIToolpathAccessor->_setCache (new ParameterCache_6<std::string, std::string, LibMCEnv::eToolpathProfileModificationType, LibMCEnv::eToolpathProfileModificationFactor, LibMCEnv_double, LibMCEnv_double> (sNamespace, sValueName, *pModificationType, *pModificationFactor, *pMinValue, *pMaxValue));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_6<std::string, std::string, LibMCEnv::eToolpathProfileModificationType, LibMCEnv::eToolpathProfileModificationFactor, LibMCEnv_double, LibMCEnv_double>*> (pIToolpathAccessor->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+			cache->retrieveData (sNamespace, sValueName, *pModificationType, *pModificationFactor, *pMinValue, *pMaxValue);
+			pIToolpathAccessor->_setCache (nullptr);
+		}
+		
+		if (pNamespaceNeededChars)
+			*pNamespaceNeededChars = (LibMCEnv_uint32) (sNamespace.size()+1);
+		if (pNamespaceBuffer) {
+			if (sNamespace.size() >= nNamespaceBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iNamespace = 0; iNamespace < sNamespace.size(); iNamespace++)
+				pNamespaceBuffer[iNamespace] = sNamespace[iNamespace];
+			pNamespaceBuffer[sNamespace.size()] = 0;
+		}
+		if (pValueNameNeededChars)
+			*pValueNameNeededChars = (LibMCEnv_uint32) (sValueName.size()+1);
+		if (pValueNameBuffer) {
+			if (sValueName.size() >= nValueNameBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iValueName = 0; iValueName < sValueName.size(); iValueName++)
+				pValueNameBuffer[iValueName] = sValueName[iValueName];
+			pValueNameBuffer[sValueName.size()] = 0;
+		}
 		return LIBMCENV_SUCCESS;
 	}
 	catch (ELibMCEnvInterfaceException & Exception) {
@@ -30374,6 +30700,284 @@ LibMCEnvResult libmcenv_telemetrychannel_createinstantmarker(LibMCEnv_TelemetryC
 
 
 /*************************************************************************************************************************
+ Class implementation for Formula
+**************************************************************************************************************************/
+LibMCEnvResult libmcenv_formula_getformula(LibMCEnv_Formula pFormula, const LibMCEnv_uint32 nFormulaBufferSize, LibMCEnv_uint32* pFormulaNeededChars, char * pFormulaBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pFormula;
+
+	try {
+		if ( (!pFormulaBuffer) && !(pFormulaNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula("");
+		IFormula* pIFormula = dynamic_cast<IFormula*>(pIBaseClass);
+		if (!pIFormula)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pFormulaBuffer == nullptr);
+		if (isCacheCall) {
+			sFormula = pIFormula->GetFormula();
+
+			pIFormula->_setCache (new ParameterCache_1<std::string> (sFormula));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_1<std::string>*> (pIFormula->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+			cache->retrieveData (sFormula);
+			pIFormula->_setCache (nullptr);
+		}
+		
+		if (pFormulaNeededChars)
+			*pFormulaNeededChars = (LibMCEnv_uint32) (sFormula.size()+1);
+		if (pFormulaBuffer) {
+			if (sFormula.size() >= nFormulaBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iFormula = 0; iFormula < sFormula.size(); iFormula++)
+				pFormulaBuffer[iFormula] = sFormula[iFormula];
+			pFormulaBuffer[sFormula.size()] = 0;
+		}
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_formula_getreferencecount(LibMCEnv_Formula pFormula, LibMCEnv_uint32 * pCount)
+{
+	IBase* pIBaseClass = (IBase *)pFormula;
+
+	try {
+		if (pCount == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IFormula* pIFormula = dynamic_cast<IFormula*>(pIBaseClass);
+		if (!pIFormula)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pCount = pIFormula->GetReferenceCount();
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_formula_getreference(LibMCEnv_Formula pFormula, LibMCEnv_uint32 nIndex, const LibMCEnv_uint32 nPathBufferSize, LibMCEnv_uint32* pPathNeededChars, char * pPathBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pFormula;
+
+	try {
+		if ( (!pPathBuffer) && !(pPathNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sPath("");
+		IFormula* pIFormula = dynamic_cast<IFormula*>(pIBaseClass);
+		if (!pIFormula)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pPathBuffer == nullptr);
+		if (isCacheCall) {
+			sPath = pIFormula->GetReference(nIndex);
+
+			pIFormula->_setCache (new ParameterCache_1<std::string> (sPath));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_1<std::string>*> (pIFormula->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+			cache->retrieveData (sPath);
+			pIFormula->_setCache (nullptr);
+		}
+		
+		if (pPathNeededChars)
+			*pPathNeededChars = (LibMCEnv_uint32) (sPath.size()+1);
+		if (pPathBuffer) {
+			if (sPath.size() >= nPathBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iPath = 0; iPath < sPath.size(); iPath++)
+				pPathBuffer[iPath] = sPath[iPath];
+			pPathBuffer[sPath.size()] = 0;
+		}
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_formula_hassessionreferences(LibMCEnv_Formula pFormula, bool * pHasSessionReferences)
+{
+	IBase* pIBaseClass = (IBase *)pFormula;
+
+	try {
+		if (pHasSessionReferences == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IFormula* pIFormula = dynamic_cast<IFormula*>(pIBaseClass);
+		if (!pIFormula)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pHasSessionReferences = pIFormula->HasSessionReferences();
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_formula_evaluate(LibMCEnv_Formula pFormula, const LibMCEnv_uint32 nValueBufferSize, LibMCEnv_uint32* pValueNeededChars, char * pValueBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pFormula;
+
+	try {
+		if ( (!pValueBuffer) && !(pValueNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sValue("");
+		IFormula* pIFormula = dynamic_cast<IFormula*>(pIBaseClass);
+		if (!pIFormula)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pValueBuffer == nullptr);
+		if (isCacheCall) {
+			sValue = pIFormula->Evaluate();
+
+			pIFormula->_setCache (new ParameterCache_1<std::string> (sValue));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_1<std::string>*> (pIFormula->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+			cache->retrieveData (sValue);
+			pIFormula->_setCache (nullptr);
+		}
+		
+		if (pValueNeededChars)
+			*pValueNeededChars = (LibMCEnv_uint32) (sValue.size()+1);
+		if (pValueBuffer) {
+			if (sValue.size() >= nValueBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iValue = 0; iValue < sValue.size(); iValue++)
+				pValueBuffer[iValue] = sValue[iValue];
+			pValueBuffer[sValue.size()] = 0;
+		}
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_formula_evaluateasdouble(LibMCEnv_Formula pFormula, LibMCEnv_double * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pFormula;
+
+	try {
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IFormula* pIFormula = dynamic_cast<IFormula*>(pIBaseClass);
+		if (!pIFormula)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIFormula->EvaluateAsDouble();
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_formula_evaluateasinteger(LibMCEnv_Formula pFormula, LibMCEnv_int64 * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pFormula;
+
+	try {
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IFormula* pIFormula = dynamic_cast<IFormula*>(pIBaseClass);
+		if (!pIFormula)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIFormula->EvaluateAsInteger();
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_formula_evaluateasbool(LibMCEnv_Formula pFormula, bool * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pFormula;
+
+	try {
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		IFormula* pIFormula = dynamic_cast<IFormula*>(pIBaseClass);
+		if (!pIFormula)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIFormula->EvaluateAsBool();
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+
+/*************************************************************************************************************************
  Class implementation for StateEnvironment
 **************************************************************************************************************************/
 LibMCEnvResult libmcenv_stateenvironment_getmachinestate(LibMCEnv_StateEnvironment pStateEnvironment, const char * pMachineInstance, const LibMCEnv_uint32 nStateNameBufferSize, LibMCEnv_uint32* pStateNameNeededChars, char * pStateNameBuffer)
@@ -33409,6 +34013,175 @@ LibMCEnvResult libmcenv_stateenvironment_loadstream(LibMCEnv_StateEnvironment pS
 		pBaseStreamInstance = pIStateEnvironment->LoadStream(sUUID, bMustExist);
 
 		*pStreamInstance = (IBase*)(pBaseStreamInstance);
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_stateenvironment_createformula(LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, LibMCEnv_Formula * pFormulaInstance)
+{
+	IBase* pIBaseClass = (IBase *)pStateEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pFormulaInstance == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		IBase* pBaseFormulaInstance(nullptr);
+		IStateEnvironment* pIStateEnvironment = dynamic_cast<IStateEnvironment*>(pIBaseClass);
+		if (!pIStateEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		pBaseFormulaInstance = pIStateEnvironment->CreateFormula(sFormula);
+
+		*pFormulaInstance = (IBase*)(pBaseFormulaInstance);
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_stateenvironment_evaluateformula(LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, const LibMCEnv_uint32 nValueBufferSize, LibMCEnv_uint32* pValueNeededChars, char * pValueBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pStateEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if ( (!pValueBuffer) && !(pValueNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		std::string sValue("");
+		IStateEnvironment* pIStateEnvironment = dynamic_cast<IStateEnvironment*>(pIBaseClass);
+		if (!pIStateEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pValueBuffer == nullptr);
+		if (isCacheCall) {
+			sValue = pIStateEnvironment->EvaluateFormula(sFormula);
+
+			pIStateEnvironment->_setCache (new ParameterCache_1<std::string> (sValue));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_1<std::string>*> (pIStateEnvironment->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+			cache->retrieveData (sValue);
+			pIStateEnvironment->_setCache (nullptr);
+		}
+		
+		if (pValueNeededChars)
+			*pValueNeededChars = (LibMCEnv_uint32) (sValue.size()+1);
+		if (pValueBuffer) {
+			if (sValue.size() >= nValueBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iValue = 0; iValue < sValue.size(); iValue++)
+				pValueBuffer[iValue] = sValue[iValue];
+			pValueBuffer[sValue.size()] = 0;
+		}
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_stateenvironment_evaluateformulaasdouble(LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, LibMCEnv_double * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pStateEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		IStateEnvironment* pIStateEnvironment = dynamic_cast<IStateEnvironment*>(pIBaseClass);
+		if (!pIStateEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIStateEnvironment->EvaluateFormulaAsDouble(sFormula);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_stateenvironment_evaluateformulaasinteger(LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, LibMCEnv_int64 * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pStateEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		IStateEnvironment* pIStateEnvironment = dynamic_cast<IStateEnvironment*>(pIBaseClass);
+		if (!pIStateEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIStateEnvironment->EvaluateFormulaAsInteger(sFormula);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_stateenvironment_evaluateformulaasbool(LibMCEnv_StateEnvironment pStateEnvironment, const char * pFormula, bool * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pStateEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		IStateEnvironment* pIStateEnvironment = dynamic_cast<IStateEnvironment*>(pIBaseClass);
+		if (!pIStateEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIStateEnvironment->EvaluateFormulaAsBool(sFormula);
+
 		return LIBMCENV_SUCCESS;
 	}
 	catch (ELibMCEnvInterfaceException & Exception) {
@@ -37316,6 +38089,175 @@ LibMCEnvResult libmcenv_uienvironment_createmachineconfigurationhandler(LibMCEnv
 	}
 }
 
+LibMCEnvResult libmcenv_uienvironment_createformula(LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, LibMCEnv_Formula * pFormulaInstance)
+{
+	IBase* pIBaseClass = (IBase *)pUIEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pFormulaInstance == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		IBase* pBaseFormulaInstance(nullptr);
+		IUIEnvironment* pIUIEnvironment = dynamic_cast<IUIEnvironment*>(pIBaseClass);
+		if (!pIUIEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		pBaseFormulaInstance = pIUIEnvironment->CreateFormula(sFormula);
+
+		*pFormulaInstance = (IBase*)(pBaseFormulaInstance);
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_uienvironment_evaluateformula(LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, const LibMCEnv_uint32 nValueBufferSize, LibMCEnv_uint32* pValueNeededChars, char * pValueBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pUIEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if ( (!pValueBuffer) && !(pValueNeededChars) )
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		std::string sValue("");
+		IUIEnvironment* pIUIEnvironment = dynamic_cast<IUIEnvironment*>(pIBaseClass);
+		if (!pIUIEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pValueBuffer == nullptr);
+		if (isCacheCall) {
+			sValue = pIUIEnvironment->EvaluateFormula(sFormula);
+
+			pIUIEnvironment->_setCache (new ParameterCache_1<std::string> (sValue));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_1<std::string>*> (pIUIEnvironment->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+			cache->retrieveData (sValue);
+			pIUIEnvironment->_setCache (nullptr);
+		}
+		
+		if (pValueNeededChars)
+			*pValueNeededChars = (LibMCEnv_uint32) (sValue.size()+1);
+		if (pValueBuffer) {
+			if (sValue.size() >= nValueBufferSize)
+				throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_BUFFERTOOSMALL);
+			for (size_t iValue = 0; iValue < sValue.size(); iValue++)
+				pValueBuffer[iValue] = sValue[iValue];
+			pValueBuffer[sValue.size()] = 0;
+		}
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_uienvironment_evaluateformulaasdouble(LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, LibMCEnv_double * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pUIEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		IUIEnvironment* pIUIEnvironment = dynamic_cast<IUIEnvironment*>(pIBaseClass);
+		if (!pIUIEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIUIEnvironment->EvaluateFormulaAsDouble(sFormula);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_uienvironment_evaluateformulaasinteger(LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, LibMCEnv_int64 * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pUIEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		IUIEnvironment* pIUIEnvironment = dynamic_cast<IUIEnvironment*>(pIBaseClass);
+		if (!pIUIEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIUIEnvironment->EvaluateFormulaAsInteger(sFormula);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCEnvResult libmcenv_uienvironment_evaluateformulaasbool(LibMCEnv_UIEnvironment pUIEnvironment, const char * pFormula, bool * pValue)
+{
+	IBase* pIBaseClass = (IBase *)pUIEnvironment;
+
+	try {
+		if (pFormula == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pValue == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sFormula(pFormula);
+		IUIEnvironment* pIUIEnvironment = dynamic_cast<IUIEnvironment*>(pIBaseClass);
+		if (!pIUIEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		*pValue = pIUIEnvironment->EvaluateFormulaAsBool(sFormula);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 
 
 /*************************************************************************************************************************
@@ -37957,6 +38899,12 @@ LibMCEnvResult LibMCEnv::Impl::LibMCEnv_GetProcAddress (const char * pProcName, 
 		*ppProcAddress = (void*) &libmcenv_toolpathlayer_getsegmentprofiletypedvaluedef;
 	if (sProcName == "libmcenv_toolpathlayer_getsegmentprofiletypedmodificationtype") 
 		*ppProcAddress = (void*) &libmcenv_toolpathlayer_getsegmentprofiletypedmodificationtype;
+	if (sProcName == "libmcenv_toolpathlayer_getsegmentprofilemodifiercount") 
+		*ppProcAddress = (void*) &libmcenv_toolpathlayer_getsegmentprofilemodifiercount;
+	if (sProcName == "libmcenv_toolpathlayer_getsegmentprofilemodifierinfo") 
+		*ppProcAddress = (void*) &libmcenv_toolpathlayer_getsegmentprofilemodifierinfo;
+	if (sProcName == "libmcenv_toolpathlayer_segmenthasmodificationfactors") 
+		*ppProcAddress = (void*) &libmcenv_toolpathlayer_segmenthasmodificationfactors;
 	if (sProcName == "libmcenv_toolpathlayer_getsegmentpartuuid") 
 		*ppProcAddress = (void*) &libmcenv_toolpathlayer_getsegmentpartuuid;
 	if (sProcName == "libmcenv_toolpathlayer_getsegmentlocalpartid") 
@@ -37973,6 +38921,8 @@ LibMCEnvResult LibMCEnv::Impl::LibMCEnv_GetProcAddress (const char * pProcName, 
 		*ppProcAddress = (void*) &libmcenv_toolpathlayer_evaluatetypedhatchprofilemodifier;
 	if (sProcName == "libmcenv_toolpathlayer_evaluatetypedhatchprofileinterpolation") 
 		*ppProcAddress = (void*) &libmcenv_toolpathlayer_evaluatetypedhatchprofileinterpolation;
+	if (sProcName == "libmcenv_toolpathlayer_evaluatetypedpolylineprofilemodifier") 
+		*ppProcAddress = (void*) &libmcenv_toolpathlayer_evaluatetypedpolylineprofilemodifier;
 	if (sProcName == "libmcenv_toolpathlayer_getzvalue") 
 		*ppProcAddress = (void*) &libmcenv_toolpathlayer_getzvalue;
 	if (sProcName == "libmcenv_toolpathlayer_getzvalueinmm") 
@@ -38013,6 +38963,14 @@ LibMCEnvResult LibMCEnv::Impl::LibMCEnv_GetProcAddress (const char * pProcName, 
 		*ppProcAddress = (void*) &libmcenv_toolpathaccessor_getpart;
 	if (sProcName == "libmcenv_toolpathaccessor_findpartbyuuid") 
 		*ppProcAddress = (void*) &libmcenv_toolpathaccessor_findpartbyuuid;
+	if (sProcName == "libmcenv_toolpathaccessor_getprofilecount") 
+		*ppProcAddress = (void*) &libmcenv_toolpathaccessor_getprofilecount;
+	if (sProcName == "libmcenv_toolpathaccessor_getprofileinfo") 
+		*ppProcAddress = (void*) &libmcenv_toolpathaccessor_getprofileinfo;
+	if (sProcName == "libmcenv_toolpathaccessor_getprofilemodifiercount") 
+		*ppProcAddress = (void*) &libmcenv_toolpathaccessor_getprofilemodifiercount;
+	if (sProcName == "libmcenv_toolpathaccessor_getprofilemodifierinfo") 
+		*ppProcAddress = (void*) &libmcenv_toolpathaccessor_getprofilemodifierinfo;
 	if (sProcName == "libmcenv_toolpathaccessor_getbuildheightinunits") 
 		*ppProcAddress = (void*) &libmcenv_toolpathaccessor_getbuildheightinunits;
 	if (sProcName == "libmcenv_toolpathaccessor_getzvalueinunits") 
@@ -39199,6 +40157,22 @@ LibMCEnvResult LibMCEnv::Impl::LibMCEnv_GetProcAddress (const char * pProcName, 
 		*ppProcAddress = (void*) &libmcenv_telemetrychannel_startmarkerscope;
 	if (sProcName == "libmcenv_telemetrychannel_createinstantmarker") 
 		*ppProcAddress = (void*) &libmcenv_telemetrychannel_createinstantmarker;
+	if (sProcName == "libmcenv_formula_getformula") 
+		*ppProcAddress = (void*) &libmcenv_formula_getformula;
+	if (sProcName == "libmcenv_formula_getreferencecount") 
+		*ppProcAddress = (void*) &libmcenv_formula_getreferencecount;
+	if (sProcName == "libmcenv_formula_getreference") 
+		*ppProcAddress = (void*) &libmcenv_formula_getreference;
+	if (sProcName == "libmcenv_formula_hassessionreferences") 
+		*ppProcAddress = (void*) &libmcenv_formula_hassessionreferences;
+	if (sProcName == "libmcenv_formula_evaluate") 
+		*ppProcAddress = (void*) &libmcenv_formula_evaluate;
+	if (sProcName == "libmcenv_formula_evaluateasdouble") 
+		*ppProcAddress = (void*) &libmcenv_formula_evaluateasdouble;
+	if (sProcName == "libmcenv_formula_evaluateasinteger") 
+		*ppProcAddress = (void*) &libmcenv_formula_evaluateasinteger;
+	if (sProcName == "libmcenv_formula_evaluateasbool") 
+		*ppProcAddress = (void*) &libmcenv_formula_evaluateasbool;
 	if (sProcName == "libmcenv_stateenvironment_getmachinestate") 
 		*ppProcAddress = (void*) &libmcenv_stateenvironment_getmachinestate;
 	if (sProcName == "libmcenv_stateenvironment_getpreviousstate") 
@@ -39395,6 +40369,16 @@ LibMCEnvResult LibMCEnv::Impl::LibMCEnv_GetProcAddress (const char * pProcName, 
 		*ppProcAddress = (void*) &libmcenv_stateenvironment_createzipstream;
 	if (sProcName == "libmcenv_stateenvironment_loadstream") 
 		*ppProcAddress = (void*) &libmcenv_stateenvironment_loadstream;
+	if (sProcName == "libmcenv_stateenvironment_createformula") 
+		*ppProcAddress = (void*) &libmcenv_stateenvironment_createformula;
+	if (sProcName == "libmcenv_stateenvironment_evaluateformula") 
+		*ppProcAddress = (void*) &libmcenv_stateenvironment_evaluateformula;
+	if (sProcName == "libmcenv_stateenvironment_evaluateformulaasdouble") 
+		*ppProcAddress = (void*) &libmcenv_stateenvironment_evaluateformulaasdouble;
+	if (sProcName == "libmcenv_stateenvironment_evaluateformulaasinteger") 
+		*ppProcAddress = (void*) &libmcenv_stateenvironment_evaluateformulaasinteger;
+	if (sProcName == "libmcenv_stateenvironment_evaluateformulaasbool") 
+		*ppProcAddress = (void*) &libmcenv_stateenvironment_evaluateformulaasbool;
 	if (sProcName == "libmcenv_uiitem_getname") 
 		*ppProcAddress = (void*) &libmcenv_uiitem_getname;
 	if (sProcName == "libmcenv_uiitem_getpath") 
@@ -39623,6 +40607,16 @@ LibMCEnvResult LibMCEnv::Impl::LibMCEnv_GetProcAddress (const char * pProcName, 
 		*ppProcAddress = (void*) &libmcenv_uienvironment_getexternaleventresults;
 	if (sProcName == "libmcenv_uienvironment_createmachineconfigurationhandler") 
 		*ppProcAddress = (void*) &libmcenv_uienvironment_createmachineconfigurationhandler;
+	if (sProcName == "libmcenv_uienvironment_createformula") 
+		*ppProcAddress = (void*) &libmcenv_uienvironment_createformula;
+	if (sProcName == "libmcenv_uienvironment_evaluateformula") 
+		*ppProcAddress = (void*) &libmcenv_uienvironment_evaluateformula;
+	if (sProcName == "libmcenv_uienvironment_evaluateformulaasdouble") 
+		*ppProcAddress = (void*) &libmcenv_uienvironment_evaluateformulaasdouble;
+	if (sProcName == "libmcenv_uienvironment_evaluateformulaasinteger") 
+		*ppProcAddress = (void*) &libmcenv_uienvironment_evaluateformulaasinteger;
+	if (sProcName == "libmcenv_uienvironment_evaluateformulaasbool") 
+		*ppProcAddress = (void*) &libmcenv_uienvironment_evaluateformulaasbool;
 	if (sProcName == "libmcenv_getversion") 
 		*ppProcAddress = (void*) &libmcenv_getversion;
 	if (sProcName == "libmcenv_getlasterror") 

@@ -140,6 +140,7 @@ class IMachineConfigurationTypeIterator;
 class IMachineConfigurationHandler;
 class ITelemetryMarkerScope;
 class ITelemetryChannel;
+class IFormula;
 class IStateEnvironment;
 class IUIItem;
 class IUIEnvironment;
@@ -247,6 +248,31 @@ template <class T1, class T2, class T3, class T4, class T5> class ParameterCache
 			param3 = m_param3;
 			param4 = m_param4;
 			param5 = m_param5;
+		}
+};
+
+template <class T1, class T2, class T3, class T4, class T5, class T6> class ParameterCache_6 : public ParameterCache {
+	private:
+		T1 m_param1;
+		T2 m_param2;
+		T3 m_param3;
+		T4 m_param4;
+		T5 m_param5;
+		T6 m_param6;
+	public:
+		ParameterCache_6 (const T1 & param1, const T2 & param2, const T3 & param3, const T4 & param4, const T5 & param5, const T6 & param6)
+			: m_param1 (param1), m_param2 (param2), m_param3 (param3), m_param4 (param4), m_param5 (param5), m_param6 (param6)
+		{
+		}
+
+		void retrieveData (T1 & param1, T2 & param2, T3 & param3, T4 & param4, T5 & param5, T6 & param6)
+		{
+			param1 = m_param1;
+			param2 = m_param2;
+			param3 = m_param3;
+			param4 = m_param4;
+			param5 = m_param5;
+			param6 = m_param6;
 		}
 };
 
@@ -2906,6 +2932,34 @@ public:
 	virtual LibMCEnv::eToolpathProfileModificationType GetSegmentProfileTypedModificationType(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType) = 0;
 
 	/**
+	* IToolpathLayer::GetSegmentProfileModifierCount - Retrieves the number of modifiers of the profile assigned to a segment.
+	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+	* @return Number of modifiers of the profile.
+	*/
+	virtual LibMCEnv_uint32 GetSegmentProfileModifierCount(const LibMCEnv_uint32 nSegmentIndex) = 0;
+
+	/**
+	* IToolpathLayer::GetSegmentProfileModifierInfo - Retrieves a modifier of the profile assigned to a segment.
+	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+	* @param[in] nModifierIndex - Index of the modifier. Must be between 0 and ModifierCount - 1.
+	* @param[out] sNamespace - Namespace of the modified profile value. Empty for standard values.
+	* @param[out] sValueName - Name of the modified profile value.
+	* @param[out] eModificationType - Modification type.
+	* @param[out] eModificationFactor - Factor that the layer data uses for this modifier.
+	* @param[out] dMinValue - Value for a factor of 0.
+	* @param[out] dMaxValue - Value for a factor of 1.
+	*/
+	virtual void GetSegmentProfileModifierInfo(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv_uint32 nModifierIndex, std::string & sNamespace, std::string & sValueName, LibMCEnv::eToolpathProfileModificationType & eModificationType, LibMCEnv::eToolpathProfileModificationFactor & eModificationFactor, LibMCEnv_double & dMinValue, LibMCEnv_double & dMaxValue) = 0;
+
+	/**
+	* IToolpathLayer::SegmentHasModificationFactors - Returns if the layer data of a segment carries factors of the given type. Segments without factors are evaluated with the nominal profile value.
+	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+	* @param[in] eModificationFactor - Modification factor to check.
+	* @return Returns true if the segment carries factors of the given type.
+	*/
+	virtual bool SegmentHasModificationFactors(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileModificationFactor eModificationFactor) = 0;
+
+	/**
 	* IToolpathLayer::GetSegmentPartUUID - Retrieves the assigned segment part uuid.
 	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
 	* @return Segment Part UUID
@@ -2956,7 +3010,7 @@ public:
 	virtual void GetSegmentHatchDataInMM(const LibMCEnv_uint32 nSegmentIndex, LibMCEnv_uint64 nHatchDataBufferSize, LibMCEnv_uint64* pHatchDataNeededCount, LibMCEnv::sFloatHatch2D * pHatchDataBuffer) = 0;
 
 	/**
-	* IToolpathLayer::EvaluateTypedHatchProfileModifier - Evaluates a typed profile value with its modifier factors. Fails if segment type is not hatch.
+	* IToolpathLayer::EvaluateTypedHatchProfileModifier - Evaluates a typed profile value with its modifier factors. Segments without factors of the modifier return the nominal profile value. Fails if segment type is not hatch.
 	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
 	* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
 	* @param[in] nEvaluationData1BufferSize - Number of elements in buffer
@@ -2980,6 +3034,16 @@ public:
 	* @param[out] pEvaluationDataBuffer - Hatch2DSubInterpolationData buffer of Evaluated data on evaluation points for the full segment, in hatch order. Will contain the sum of CountArray elements.
 	*/
 	virtual void EvaluateTypedHatchProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32 * pCountArrayBuffer, LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData * pEvaluationDataBuffer) = 0;
+
+	/**
+	* IToolpathLayer::EvaluateTypedPolylineProfileModifier - Evaluates a typed profile value with its modifier factors for each line of a polyline or loop segment. A line takes the factor of the point it ends in; the closing line of a loop takes the factor of the first point. Segments without factors of the modifier return the nominal profile value. Fails if segment type is not polyline.
+	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+	* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
+	* @param[in] nEvaluationDataBufferSize - Number of elements in buffer
+	* @param[out] pEvaluationDataNeededCount - will be filled with the count of the written structs, or needed buffer size.
+	* @param[out] pEvaluationDataBuffer - double buffer of Evaluated value of each line. Will return PointCount - 1 elements.
+	*/
+	virtual void EvaluateTypedPolylineProfileModifier(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv_double * pEvaluationDataBuffer) = 0;
 
 	/**
 	* IToolpathLayer::GetZValue - Retrieves the layers Z Value in units.
@@ -3132,6 +3196,40 @@ public:
 	* @return Part Instance. Returns null if part does not exist.
 	*/
 	virtual IToolpathPart * FindPartByUUID(const std::string & sPartUUID) = 0;
+
+	/**
+	* IToolpathAccessor::GetProfileCount - Retrieves the number of toolpath profiles.
+	* @return Number of profiles.
+	*/
+	virtual LibMCEnv_uint32 GetProfileCount() = 0;
+
+	/**
+	* IToolpathAccessor::GetProfileInfo - Retrieves the UUID and name of a toolpath profile.
+	* @param[in] nProfileIndex - Index of the profile. MUST be between 0 and ProfileCount - 1.
+	* @param[out] sUUID - UUID of the profile.
+	* @param[out] sName - Name of the profile.
+	*/
+	virtual void GetProfileInfo(const LibMCEnv_uint32 nProfileIndex, std::string & sUUID, std::string & sName) = 0;
+
+	/**
+	* IToolpathAccessor::GetProfileModifierCount - Retrieves the number of modifiers of a toolpath profile.
+	* @param[in] nProfileIndex - Index of the profile. MUST be between 0 and ProfileCount - 1.
+	* @return Number of modifiers of the profile.
+	*/
+	virtual LibMCEnv_uint32 GetProfileModifierCount(const LibMCEnv_uint32 nProfileIndex) = 0;
+
+	/**
+	* IToolpathAccessor::GetProfileModifierInfo - Retrieves a modifier of a toolpath profile. Allows checking all modifiers of a build before it starts.
+	* @param[in] nProfileIndex - Index of the profile. MUST be between 0 and ProfileCount - 1.
+	* @param[in] nModifierIndex - Index of the modifier. MUST be between 0 and ModifierCount - 1.
+	* @param[out] sNamespace - Namespace of the modified profile value. Empty for standard values.
+	* @param[out] sValueName - Name of the modified profile value.
+	* @param[out] eModificationType - Modification type.
+	* @param[out] eModificationFactor - Factor that the layer data uses for this modifier.
+	* @param[out] dMinValue - Value for a factor of 0.
+	* @param[out] dMaxValue - Value for a factor of 1.
+	*/
+	virtual void GetProfileModifierInfo(const LibMCEnv_uint32 nProfileIndex, const LibMCEnv_uint32 nModifierIndex, std::string & sNamespace, std::string & sValueName, LibMCEnv::eToolpathProfileModificationType & eModificationType, LibMCEnv::eToolpathProfileModificationFactor & eModificationFactor, LibMCEnv_double & dMinValue, LibMCEnv_double & dMaxValue) = 0;
 
 	/**
 	* IToolpathAccessor::GetBuildHeightInUnits - Retrieves the build height in units.
@@ -7804,6 +7902,66 @@ typedef IBaseSharedPtr<ITelemetryChannel> PITelemetryChannel;
 
 
 /*************************************************************************************************************************
+ Class interface for Formula 
+**************************************************************************************************************************/
+
+class IFormula : public virtual IBase {
+public:
+	/**
+	* IFormula::GetFormula - Returns the formula text.
+	* @return Formula text.
+	*/
+	virtual std::string GetFormula() = 0;
+
+	/**
+	* IFormula::GetReferenceCount - Returns the number of distinct references of the formula.
+	* @return Number of distinct references.
+	*/
+	virtual LibMCEnv_uint32 GetReferenceCount() = 0;
+
+	/**
+	* IFormula::GetReference - Returns a reference of the formula, in order of first appearance.
+	* @param[in] nIndex - Index of the reference, 0-based. Fails if larger or equal to the reference count.
+	* @return Reference as written in the formula, for example main.jobinfo.currentlayer or session.name.
+	*/
+	virtual std::string GetReference(const LibMCEnv_uint32 nIndex) = 0;
+
+	/**
+	* IFormula::HasSessionReferences - Returns if the formula references session or user values.
+	* @return True, if the formula contains a session or user reference.
+	*/
+	virtual bool HasSessionReferences() = 0;
+
+	/**
+	* IFormula::Evaluate - Evaluates the formula and returns the result as string. Booleans are returned as 1 and 0. Fails with FORMULAEVALUATIONFAILED on runtime errors like a division by zero or an unknown parameter.
+	* @return Result of the formula.
+	*/
+	virtual std::string Evaluate() = 0;
+
+	/**
+	* IFormula::EvaluateAsDouble - Evaluates the formula and returns the result as double. An empty result is 0. Fails if the result is a text that is not a number.
+	* @return Result of the formula.
+	*/
+	virtual LibMCEnv_double EvaluateAsDouble() = 0;
+
+	/**
+	* IFormula::EvaluateAsInteger - Evaluates the formula and returns the result as integer. Doubles are rounded to the nearest integer. An empty result is 0. Fails if the result is a text that is not a number.
+	* @return Result of the formula.
+	*/
+	virtual LibMCEnv_int64 EvaluateAsInteger() = 0;
+
+	/**
+	* IFormula::EvaluateAsBool - Evaluates the formula and returns the result as bool. Numbers are true unless zero; strings are true unless empty, 0 or false.
+	* @return Result of the formula.
+	*/
+	virtual bool EvaluateAsBool() = 0;
+
+};
+
+typedef IBaseSharedPtr<IFormula> PIFormula;
+
+
+/*************************************************************************************************************************
  Class interface for StateEnvironment 
 **************************************************************************************************************************/
 
@@ -8519,6 +8677,41 @@ public:
 	* @return Stream Instance. Will return null if not found and MustExists is false.
 	*/
 	virtual IStreamReader * LoadStream(const std::string & sUUID, const bool bMustExist) = 0;
+
+	/**
+	* IStateEnvironment::CreateFormula - Compiles a formula over the parameters and states of all state machines. Fails with INVALIDFORMULA on syntax errors and with FORMULASESSIONREFERENCESNOTAVAILABLE if the formula references session or user values.
+	* @param[in] sFormula - Formula text, for example main.jobinfo.currentlayer + 1.
+	* @return Compiled formula.
+	*/
+	virtual IFormula * CreateFormula(const std::string & sFormula) = 0;
+
+	/**
+	* IStateEnvironment::EvaluateFormula - Compiles and evaluates a formula once. See CreateFormula and Formula.Evaluate.
+	* @param[in] sFormula - Formula text.
+	* @return Result of the formula.
+	*/
+	virtual std::string EvaluateFormula(const std::string & sFormula) = 0;
+
+	/**
+	* IStateEnvironment::EvaluateFormulaAsDouble - Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsDouble.
+	* @param[in] sFormula - Formula text.
+	* @return Result of the formula.
+	*/
+	virtual LibMCEnv_double EvaluateFormulaAsDouble(const std::string & sFormula) = 0;
+
+	/**
+	* IStateEnvironment::EvaluateFormulaAsInteger - Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsInteger.
+	* @param[in] sFormula - Formula text.
+	* @return Result of the formula.
+	*/
+	virtual LibMCEnv_int64 EvaluateFormulaAsInteger(const std::string & sFormula) = 0;
+
+	/**
+	* IStateEnvironment::EvaluateFormulaAsBool - Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsBool.
+	* @param[in] sFormula - Formula text.
+	* @return Result of the formula.
+	*/
+	virtual bool EvaluateFormulaAsBool(const std::string & sFormula) = 0;
 
 };
 
@@ -9371,6 +9564,41 @@ public:
 	* @return MachineConfigurationHandler instance.
 	*/
 	virtual IMachineConfigurationHandler * CreateMachineConfigurationHandler() = 0;
+
+	/**
+	* IUIEnvironment::CreateFormula - Compiles a formula over the parameters and states of all state machines and the session and user values of the client session that triggered the event. Fails with INVALIDFORMULA on syntax errors.
+	* @param[in] sFormula - Formula text, for example session.formula_a + main.jobinfo.currentlayer.
+	* @return Compiled formula. Session and user references keep resolving to the session of this event.
+	*/
+	virtual IFormula * CreateFormula(const std::string & sFormula) = 0;
+
+	/**
+	* IUIEnvironment::EvaluateFormula - Compiles and evaluates a formula once. See CreateFormula and Formula.Evaluate.
+	* @param[in] sFormula - Formula text.
+	* @return Result of the formula.
+	*/
+	virtual std::string EvaluateFormula(const std::string & sFormula) = 0;
+
+	/**
+	* IUIEnvironment::EvaluateFormulaAsDouble - Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsDouble.
+	* @param[in] sFormula - Formula text.
+	* @return Result of the formula.
+	*/
+	virtual LibMCEnv_double EvaluateFormulaAsDouble(const std::string & sFormula) = 0;
+
+	/**
+	* IUIEnvironment::EvaluateFormulaAsInteger - Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsInteger.
+	* @param[in] sFormula - Formula text.
+	* @return Result of the formula.
+	*/
+	virtual LibMCEnv_int64 EvaluateFormulaAsInteger(const std::string & sFormula) = 0;
+
+	/**
+	* IUIEnvironment::EvaluateFormulaAsBool - Compiles and evaluates a formula once. See CreateFormula and Formula.EvaluateAsBool.
+	* @param[in] sFormula - Formula text.
+	* @return Result of the formula.
+	*/
+	virtual bool EvaluateFormulaAsBool(const std::string & sFormula) = 0;
 
 };
 

@@ -164,6 +164,7 @@ typedef void * Lib3MF_pvoid;
 #define LIB3MF_ERROR_TOOLPATH_SCALINGDATANEEDSTOMATCHPOINTDATA 5014 /** Scaling data needs to match point data */
 #define LIB3MF_ERROR_TOOLPATH_SEGMENTISNOTOFTYPEHATCH 5015 /** Segment is not of type hatch */
 #define LIB3MF_ERROR_TOOLPATH_MODIFIERNOTFOUND 5016 /** Toolpath modifier not found */
+#define LIB3MF_ERROR_TOOLPATH_SEGMENTISNOTOFTYPEPOINTS 5017 /** Segment is not of type loop or polyline */
 
 /*************************************************************************************************************************
  Error strings for Lib3MF
@@ -243,6 +244,7 @@ inline const char * LIB3MF_GETERRORSTRING (Lib3MFResult nErrorCode) {
     case LIB3MF_ERROR_TOOLPATH_SCALINGDATANEEDSTOMATCHPOINTDATA: return "Scaling data needs to match point data";
     case LIB3MF_ERROR_TOOLPATH_SEGMENTISNOTOFTYPEHATCH: return "Segment is not of type hatch";
     case LIB3MF_ERROR_TOOLPATH_MODIFIERNOTFOUND: return "Toolpath modifier not found";
+    case LIB3MF_ERROR_TOOLPATH_SEGMENTISNOTOFTYPEPOINTS: return "Segment is not of type loop or polyline";
     default: return "unknown error";
   }
 }
@@ -252,7 +254,6 @@ inline const char * LIB3MF_GETERRORSTRING (Lib3MFResult nErrorCode) {
 **************************************************************************************************************************/
 
 typedef Lib3MFHandle Lib3MF_Base;
-typedef Lib3MFHandle Lib3MF_BinaryStream;
 typedef Lib3MFHandle Lib3MF_Writer;
 typedef Lib3MFHandle Lib3MF_PersistentReaderSource;
 typedef Lib3MFHandle Lib3MF_Reader;
@@ -366,6 +367,8 @@ typedef Lib3MFHandle Lib3MF_BuildItem;
 typedef Lib3MFHandle Lib3MF_BuildItemIterator;
 typedef Lib3MFHandle Lib3MF_Slice;
 typedef Lib3MFHandle Lib3MF_ToolpathProfile;
+typedef Lib3MFHandle Lib3MF_ToolpathLaserSource;
+typedef Lib3MFHandle Lib3MF_ToolpathSyncGroup;
 typedef Lib3MFHandle Lib3MF_ToolpathLayerReader;
 typedef Lib3MFHandle Lib3MF_ToolpathLayerData;
 typedef Lib3MFHandle Lib3MF_ToolpathViewable;
@@ -458,11 +461,6 @@ namespace Lib3MF {
     BeamLatticeBallModeNone = 0,
     Mixed = 1,
     All = 2
-  };
-  
-  enum class eBinaryStreamPredictionType : Lib3MF_int32 {
-    NoPrediction = 0,
-    DeltaPrediction = 1
   };
   
   enum class eProgressIdentifier : Lib3MF_int32 {
@@ -852,7 +850,6 @@ typedef Lib3MF::eTextureFilter eLib3MFTextureFilter;
 typedef Lib3MF::eBeamLatticeCapMode eLib3MFBeamLatticeCapMode;
 typedef Lib3MF::eBeamLatticeClipMode eLib3MFBeamLatticeClipMode;
 typedef Lib3MF::eBeamLatticeBallMode eLib3MFBeamLatticeBallMode;
-typedef Lib3MF::eBinaryStreamPredictionType eLib3MFBinaryStreamPredictionType;
 typedef Lib3MF::eProgressIdentifier eLib3MFProgressIdentifier;
 typedef Lib3MF::eBlendMethod eLib3MFBlendMethod;
 typedef Lib3MF::eToolpathSegmentType eLib3MFToolpathSegmentType;

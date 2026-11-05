@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_unittests_xmldocumentnode.hpp"
 #include "amc_unittests_xmldocumentattribute.hpp"
 #include "amc_unittests_xmldocumentnamespace.hpp"
+#include "amc_unittests_xmlattributerange.hpp"
 
 #include "amc_unittests_accesscontrol.hpp"
 #include "amc_unittests_accessrole.hpp"
@@ -57,9 +58,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_unittests_parameters.hpp"
 #include "amc_unittests_telemetry.hpp"
 #include "amc_unittests_sessionvariables.hpp"
+#include "amc_unittests_uiformula.hpp"
 #include "amc_unittests_frontendsnapshot.hpp"
 #include "amc_unittests_eventstream.hpp"
 #include "amc_unittests_scanlab_jumpfilter.hpp"
+#include "amc_unittests_scanlab_powerramp.hpp"
+#include "amc_unittests_parquetwriter.hpp"
 
 // LibMCData unit tests
 #include "amc_unittests_libmcdata_storage.hpp"
@@ -89,6 +93,7 @@ CUnitTests::CUnitTests (PUnitTestIO pIO)
 	registerTestGroup(std::make_shared <CUnitTestGroup_XMLDocumentNode>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_XMLDocumentAttribute>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_XMLDocumentNamespace>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_XMLAttributeRange>());
 
 	registerTestGroup(std::make_shared <CUnitTestGroup_AccessControl>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_AccessRole>());
@@ -111,9 +116,12 @@ CUnitTests::CUnitTests (PUnitTestIO pIO)
 	registerTestGroup(std::make_shared <CUnitTestGroup_Parameters>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_Telemetry>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_SessionVariables>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_UIFormula>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_FrontendSnapshot>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_EventStream>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_ScanLab_JumpFilter>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_ScanLab_PowerRamp>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_ParquetWriter>());
 
 	// LibMCData unit tests
 	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_Storage>());

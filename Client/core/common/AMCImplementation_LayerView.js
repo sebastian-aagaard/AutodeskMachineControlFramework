@@ -28,12 +28,58 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
  */
 
+import { ColorMapSampler, DEFAULT_COLORMAP } from "./AMCImplementation_ColorMaps.js";
+
 const LAYERVIEW_MINSCALING = 0.4;
 const LAYERVIEW_MAXSCALING = 4000.0;
 const LAYERVIEW_MINVELOCITYRANGE = 1.0;
 
+// Default scatter point size calibration (pixels = base + factor * pixels per mm, clamped).
+const LAYERVIEW_POINTSIZE_BASE = 2.0;
+const LAYERVIEW_POINTSIZE_FACTOR = 0.08;
+const LAYERVIEW_POINTSIZE_MIN = 2.0;
+const LAYERVIEW_POINTSIZE_MAX = 16.0;
+
+// Fallback marking speed for segments without a laser speed, in mm/s.
+const LAYERVIEW_DEFAULTMARKSPEED = 1000.0;
+
+// Aligning toolpath vectors with a recording: a laser-on run belongs to a vector if its first
+// sample lies within the tolerance (mm) of one of the vector's lines. Runs are searched this
+// far ahead, and only this many lines of long polylines are tested.
+const LAYERVIEW_TIMING_MATCHTOLERANCE = 0.05;
+const LAYERVIEW_TIMING_RUNLOOKAHEAD = 200;
+const LAYERVIEW_TIMING_MAXGROUPLINES = 64;
+
 // Segments of parts that have been disabled are still drawn, but in this neutral gray.
 const LAYERVIEW_DISABLEDPARTCOLOR = 0xB4B4B4;
+
+// Toolpath display modes: profile colors, segment type, start time on the layer timeline,
+// laser power (ramps drawn as color gradients) and laser on (marks) / off (jumps).
+export const TOOLPATH_COLOR_MODES = ["color", "type", "time", "power", "velocity", "laseron"];
+const LAYERVIEW_COLORMAPMODES = ["time", "power", "velocity"];
+const LAYERVIEW_UNIFORMPOINTCOLOR = 0x00d0ff;
+const LAYERVIEW_LASERONCOLOR = 0xE53935;
+const LAYERVIEW_DEFAULTHATCHCOLOR = 0xCC88CC;
+const LAYERVIEW_DEFAULTCONTOURCOLOR = 0x00AA88;
+const LAYERVIEW_DEFAULTTRAVELCOLOR = 0x1E88E5;
+// Jump lines are thinner than marks.
+const LAYERVIEW_JUMPTHICKNESSFACTOR = 0.5;
+// Start and end points of the toolpath lines (diameter in CSS pixels). The color contrasts with the background.
+const LAYERVIEW_ENDPOINTPIXELS = 4.0;
+const LAYERVIEW_ENDPOINTCOLOR_LIGHT = 0x111111;
+const LAYERVIEW_ENDPOINTCOLOR_DARK = 0xf5f5f5;
+
+// Hovered line overlay: color, arrow head at the end point (minimum length in CSS pixels and
+// in line thicknesses, wing thickness relative to the line, half opening angle) and the
+// support points of nonlinear power ramps (diameter in CSS pixels).
+const LAYERVIEW_HIGHLIGHTCOLOR = 0x00e5ff;
+const LAYERVIEW_HIGHLIGHTARROWPIXELS = 10.0;
+const LAYERVIEW_HIGHLIGHTARROWTHICKNESSFACTOR = 2.0;
+const LAYERVIEW_HIGHLIGHTARROWWINGFACTOR = 0.6;
+const LAYERVIEW_HIGHLIGHTARROWANGLE = 28.0 * Math.PI / 180.0;
+const LAYERVIEW_SUPPORTPOINTPIXELS = 9.0;
+const LAYERVIEW_SUPPORTPOINTCOLOR = 0xffb300;
+const LAYERVIEW_SUPPORTENDPOINTCOLOR = 0xffffff;
 
 // Grid level-of-detail switch band. The grid geometry is self-similar every 5
 // subdivisions, so the lower/upper bounds MUST keep a 5x ratio for the wrap to
@@ -101,8 +147,46 @@ class LayerViewImpl {
 		this.layerPointsVelocities = [];
 		this.layerPointsMaxVelocity = LAYERVIEW_MINVELOCITYRANGE;
 		this.layerPointsMinVelocity = LAYERVIEW_MINVELOCITYRANGE;
+		this.pointSizeBase = LAYERVIEW_POINTSIZE_BASE;
+		this.pointSizeFactor = LAYERVIEW_POINTSIZE_FACTOR;
+		this.pointSizeMin = LAYERVIEW_POINTSIZE_MIN;
+		this.pointSizeMax = LAYERVIEW_POINTSIZE_MAX;
 		
         this.linesCoordinates = [];
+		this.segmentProperties = [];
+		this.lineGroupIDs = null;
+		this.lineDurations = null;
+		// Modulated laser power (W) at the start and end of every line, NaN for the nominal power,
+		// and the inner support points {t, power} of nonlinear ramps by line index.
+		this.linePowers = [];
+		this.lineSupportPoints = new Map ();
+		this.lineProfileColors = [];
+
+		this.toolpathColorMode = "color";
+		this.colorMapName = DEFAULT_COLORMAP;
+		this.colorMapInverted = false;
+		// Value range mapped onto the color map: watts in power mode, milliseconds in time mode,
+		// mm/s in velocity mode. Null takes the range of the loaded layer.
+		this.colorRanges = { power: null, time: null, velocity: null };
+		this.typeColors = { hatch: LAYERVIEW_DEFAULTHATCHCOLOR, polyline: LAYERVIEW_DEFAULTCONTOURCOLOR, travel: LAYERVIEW_DEFAULTTRAVELCOLOR };
+		// Index of the line that each jump leads to, ascending.
+		this.jumpTargetLines = null;
+		this.endPointsVisible = false;
+		this.endPointColor = LAYERVIEW_ENDPOINTCOLOR_LIGHT;
+
+		this.highlightLineIndex = -1;
+		this.highlightScaling = 0.0;
+		this.highlightSupportPoints = null;
+
+		// Start time (ms) of every toolpath line on the layer timeline, see updateTiming.
+		this.lineStartTimes = null;
+		this.timelineDuration = 0.0;
+		this.timingSource = "none";
+		this.timingMatchRatio = 0.0;
+		// Fraction (0..1) of the layer timeline that is drawn; 1 shows everything.
+		this.timeCapFraction = 1.0;
+		this.visibleLineCount = 0;
+		this.visiblePointCount = 0;
 		
 		this.toolpathVisible = true;
 		this.pointsVisible = true;
@@ -121,9 +205,43 @@ class LayerViewImpl {
             this.glInstance.setBackgroundColor(colorSet.background);
         if (colorSet.grid !== undefined)
             this.gridColor = colorSet.grid;
+
+		const typeColors = {
+			hatch: LayerViewImpl.parseHexColor (colorSet.hatch, LAYERVIEW_DEFAULTHATCHCOLOR),
+			polyline: LayerViewImpl.parseHexColor (colorSet.contour, LAYERVIEW_DEFAULTCONTOURCOLOR),
+			travel: LayerViewImpl.parseHexColor (colorSet.travel, LAYERVIEW_DEFAULTTRAVELCOLOR)
+		};
+		const typeColorsChanged = (typeColors.hatch !== this.typeColors.hatch) || (typeColors.polyline !== this.typeColors.polyline) || (typeColors.travel !== this.typeColors.travel);
+		this.typeColors = typeColors;
+
+		const background = LayerViewImpl.parseHexColor (colorSet.background, 0xffffff);
+		const luminance = 0.299 * ((background >> 16) & 255) + 0.587 * ((background >> 8) & 255) + 0.114 * (background & 255);
+		const endPointColor = (luminance < 128) ? LAYERVIEW_ENDPOINTCOLOR_DARK : LAYERVIEW_ENDPOINTCOLOR_LIGHT;
+		const endPointColorChanged = endPointColor !== this.endPointColor;
+		this.endPointColor = endPointColor;
+
+		if ((typeColorsChanged && ((this.toolpathColorMode === "type") || (this.toolpathColorMode === "laseron"))) ||
+			(endPointColorChanged && this.endPointsVisible))
+			this.refreshToolpathColors ();
+		if (typeColorsChanged && (this.toolpathColorMode === "laseron"))
+			this.refreshPointColors ();
+
         this.rebuildGrid();
         this.RenderScene(true);
     }
+
+	// "#rrggbb" or "#rgb" to 0xRRGGBB.
+	static parseHexColor (value, fallback)
+	{
+		if (typeof value !== "string")
+			return fallback;
+		let hex = value.trim ();
+		if (/^#[0-9a-f]{3}$/i.test (hex))
+			hex = "#" + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+		if (!/^#[0-9a-f]{6}$/i.test (hex))
+			return fallback;
+		return parseInt (hex.substring (1), 16);
+	}
 
     rebuildGrid() {
         if (!this.glInstance) return;
@@ -251,25 +369,27 @@ class LayerViewImpl {
             gridgeometry.setScaleXY(gridScale, gridScale);
         }
 
-        var layerlinesgeometry = this.glInstance.findElement("layerdata_lines");
-        if (layerlinesgeometry) {
-            layerlinesgeometry.setPositionXY(toolpathPositionX, toolpathPositionY);
-            layerlinesgeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
-            // Three.js composes rotation before the screen-space Y inversion from
-            // setScaleXY. Negating the angle therefore produces a positive
-            // counter-clockwise rotation in machine coordinates.
-            layerlinesgeometry.setRotationZ(-this.transformAngleDegrees * Math.PI / 180.0);
+        for (const identifier of ["layerdata_lines", "layerdata_jumps", "layerdata_endpoints"]) {
+            var layerlinesgeometry = this.glInstance.findElement(identifier);
+            if (layerlinesgeometry) {
+                layerlinesgeometry.setPositionXY(toolpathPositionX, toolpathPositionY);
+                layerlinesgeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
+                // Three.js composes rotation before the screen-space Y inversion from
+                // setScaleXY. Negating the angle therefore produces a positive
+                // counter-clockwise rotation in machine coordinates.
+                layerlinesgeometry.setRotationZ(-this.transformAngleDegrees * Math.PI / 180.0);
+            }
         }
 
-        var layerhighlightgeometry = this.glInstance.findElement("layerdata_highlight");
-        if (layerhighlightgeometry) {
-            layerhighlightgeometry.setPositionXY(toolpathPositionX, toolpathPositionY);
-            layerhighlightgeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
-            layerhighlightgeometry.setRotationZ(-this.transformAngleDegrees * Math.PI / 180.0);
-        }
+        // The arrow head is sized in screen pixels, so rebuild the overlay when the zoom changes.
+        if ((this.highlightLineIndex >= 0) && (this.highlightScaling !== this.transform.scaling))
+            this.buildHighlightGeometry ();
+        this.positionHighlightGeometry ();
 
         var layerpointsgeometry = this.glInstance.findElement("layerdata_points");
         if (layerpointsgeometry) {
+            if (typeof layerpointsgeometry.setPointPixelSize === "function")
+                layerpointsgeometry.setPointPixelSize(this.computePointPixelSize() * this.glInstance.getPixelRatio());
             layerpointsgeometry.setPositionXY(toolpathPositionX, toolpathPositionY);
             layerpointsgeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
             layerpointsgeometry.setRotationZ(-this.transformAngleDegrees * Math.PI / 180.0);
@@ -613,6 +733,7 @@ class LayerViewImpl {
 		this.computeVelocities ();		
 		this.updateColors ();			
 		this.updateLayerPoints ();		
+		this.updateTiming ();
 	}
 	
 	clearPointsChannelData (pointsChannelName)
@@ -625,9 +746,67 @@ class LayerViewImpl {
 		this.layerPointsColorArray = null;
 	}
 
+	// Point colors of the "toolpath" point mode: the recorded points follow the toolpath display mode,
+	// color map and value ranges. Recorded power is raw scanner units and uses its own min/max.
+	makeToolpathModeColors ()
+	{
+		this.layerPointsColorArray = null;
+		if (!this.layerPointsArray)
+			return;
+
+		const pointCount = this.layerPointsArray.length / 2;
+		const mode = this.toolpathColorMode;
+
+		if (mode === "laseron") {
+			const laserOn = this.laser ? this.laser.laseron : null;
+			if (!laserOn || (laserOn.length < pointCount))
+				return;
+			const colors = new Array (pointCount);
+			for (let pointIndex = 0; pointIndex < pointCount; pointIndex++)
+				colors[pointIndex] = (laserOn[pointIndex] !== 0) ? LAYERVIEW_LASERONCOLOR : this.typeColors.travel;
+			this.layerPointsColorArray = colors;
+			return;
+		}
+
+		let values = null;
+		let range = null;
+		if (mode === "time") {
+			values = this.laser ? this.laser.time : null;
+			range = this.getEffectiveColorRange ("time");
+		} else if (mode === "velocity") {
+			values = this.layerPointsVelocities;
+			range = this.getEffectiveColorRange ("velocity");
+		} else if (mode === "power") {
+			values = this.laser ? this.laser.power : null;
+			if (values)
+				range = { min: values.min, max: values.max };
+		}
+		if (!values || !range || (values.length < pointCount))
+			return;
+
+		const sampler = new ColorMapSampler (this.colorMapName, this.colorMapInverted);
+		const normalize = LayerViewImpl.makeColorRangeNormalizer (range);
+		const colors = new Array (pointCount);
+		for (let pointIndex = 0; pointIndex < pointCount; pointIndex++)
+			colors[pointIndex] = sampler.colorAt (normalize (values[pointIndex]));
+		this.layerPointsColorArray = colors;
+	}
+
+	refreshPointColors ()
+	{
+		if ((this.layerPointsMode !== "toolpath") || !this.layerPointsArray)
+			return;
+		this.updateColors ();
+		this.updateLayerPoints ();
+	}
+
 	updateColors ()
 	{
 		this.layerPointsColorArray = null;
+
+		if (this.layerPointsMode === "toolpath") {
+			this.makeToolpathModeColors ();
+		}
 
 		if (this.layerPointsMode == "time") {
 			this.makeTimeColors ();
@@ -663,6 +842,28 @@ class LayerViewImpl {
 		return false;
 	}
 	
+	// Point diameter in CSS pixels for the current zoom (transform.scaling = pixels per mm).
+	computePointPixelSize ()
+	{
+		const scaling = this.transform.scaling > 0 ? this.transform.scaling : 1.0;
+		const pixelSize = this.pointSizeBase + this.pointSizeFactor * scaling;
+		return Math.min (Math.max (pixelSize, this.pointSizeMin), this.pointSizeMax);
+	}
+
+	setPointSizeCalibration (base, factor, minimum, maximum)
+	{
+		const values = [base, factor, minimum, maximum].map (Number);
+		if (values.some ((value) => !Number.isFinite (value)))
+			return;
+
+		this.pointSizeBase = values[0];
+		this.pointSizeFactor = values[1];
+		this.pointSizeMin = Math.max (values[2], 0.5);
+		this.pointSizeMax = Math.max (values[3], this.pointSizeMin);
+		this.updateTransform ();
+		this.RenderScene (true);
+	}
+
 	updateLayerPoints () {
 		if (!this.glInstance) 
 			return;
@@ -694,10 +895,382 @@ class LayerViewImpl {
 				this.filteredToOriginalIndexMap = indexMap;
 			}
 
-			this.glInstance.add2DLocalizedPointsGeometry("layerdata_points", pointsToRender, 61, this.lineScaleLevel * 0.06, 0x00d0ff, colorsToRender, -200, -200, 2, 2, 400, 400);
+			const pixelSize = this.computePointPixelSize () * this.glInstance.getPixelRatio ();
+			this.glInstance.add2DScreenPointsGeometry("layerdata_points", pointsToRender, 61, pixelSize, LAYERVIEW_UNIFORMPOINTCOLOR, colorsToRender);
+			this.applyTimeCap ();
 			this.updateTransform ();
 			this.RenderScene (true);
 		}
+	}
+
+	// Index of the drawn point closest to the viewport position within pixelTolerance, as an
+	// index into the full point array, or -1. Hidden and time-capped points are not picked.
+	/**
+	 * @param {number} screenX
+	 * @param {number} screenY
+	 * @param {number} [pixelTolerance]
+	 */
+	pickPointAtScreenPoint (screenX, screenY, pixelTolerance = 4)
+	{
+		if (!this.glInstance || !this.layerPointsArray || !this.pointsVisible)
+			return -1;
+
+		const pointsElement = this.glInstance.findElement ("layerdata_points");
+		if (!pointsElement || (typeof pointsElement.findNearestPoint !== "function"))
+			return -1;
+
+		const renderedIndex = pointsElement.findNearestPoint (screenX, screenY, pixelTolerance);
+		if (renderedIndex < 0)
+			return -1;
+
+		return this.resolvePointIndex (renderedIndex);
+	}
+
+	getPointChannelValue (columnName, pointIndex)
+	{
+		if (this.laser && this.laser[columnName] && (pointIndex >= 0) && (pointIndex < this.laser[columnName].length))
+			return this.laser[columnName][pointIndex];
+		return null;
+	}
+
+	// Measurement values of one recorded point for the hover inspector.
+	getPointInfo (pointIndex)
+	{
+		const position = this.getPointPosition (pointIndex);
+		if (!position)
+			return null;
+
+		const scannerXColumn = (this.laser && this.laser.targetx) ? "targetx" : "actualx";
+		const scannerYColumn = (this.laser && this.laser.targety) ? "targety" : "actualy";
+
+		return {
+			index: pointIndex,
+			x: position.x,
+			y: position.y,
+			time: this.getPointChannelValue ("time", pointIndex),
+			scannerx: this.getPointChannelValue (scannerXColumn, pointIndex),
+			scannery: this.getPointChannelValue (scannerYColumn, pointIndex),
+			laseron: this.getPointChannelValue ("laseron", pointIndex),
+			power: this.getPointChannelValue ("power", pointIndex),
+			velocity: this.getPointVelocity (pointIndex)
+		};
+	}
+
+	// Number of entries in a sorted array that are smaller than (or equal to, if inclusive) value.
+	static countSortedBelow (sortedArray, value, inclusive)
+	{
+		let low = 0;
+		let high = sortedArray.length;
+		while (low < high) {
+			const middle = (low + high) >> 1;
+			const entry = sortedArray[middle];
+			if ((entry < value) || (inclusive && (entry === value)))
+				low = middle + 1;
+			else
+				high = middle;
+		}
+		return low;
+	}
+
+	// Assigns a start time to every toolpath line on the layer timeline:
+	// - with a recording, the marking vectors are matched to its laser-on runs (alignLinesToRecording);
+	// - if nothing matches, the estimated marking time (length / laser speed) is mapped onto the
+	//   accumulated laser-on time of the recording;
+	// - without a recording, the estimated marking time is used directly (jumps are ignored).
+	updateTiming ()
+	{
+		this.computeTiming ();
+		if (this.toolpathColorMode === "time") {
+			this.refreshToolpathColors ();
+			this.refreshPointColors ();
+		}
+	}
+
+	computeTiming ()
+	{
+		this.timingMatchRatio = 0.0;
+		const lineCount = this.lineDurations ? this.lineDurations.length : 0;
+		const lineStartTimes = new Float64Array (lineCount);
+
+		let estimatedTotal = 0.0;
+		for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+			lineStartTimes[lineIndex] = estimatedTotal;
+			estimatedTotal += this.lineDurations[lineIndex];
+		}
+
+		const times = this.laser ? this.laser.time : null;
+		const laserOn = this.laser ? this.laser.laseron : null;
+		const hasRecording = times && (times.length > 1) && this.layerPointsArray;
+
+		if (!hasRecording) {
+			this.lineStartTimes = lineStartTimes;
+			this.timelineDuration = estimatedTotal;
+			this.timingSource = (lineCount > 0) ? "estimate" : "none";
+			this.applyTimeCap ();
+			return;
+		}
+
+		const sampleCount = times.length;
+		this.timelineDuration = times[sampleCount - 1];
+		this.timingSource = "recording";
+
+		if ((lineCount > 0) && laserOn && (laserOn.length === sampleCount) && (this.layerPointsArray.length >= sampleCount * 2)) {
+
+			const alignedStartTimes = this.alignLinesToRecording (times, laserOn);
+			if (alignedStartTimes) {
+				this.lineStartTimes = alignedStartTimes;
+				this.applyTimeCap ();
+				return;
+			}
+
+			// Accumulated laser-on time up to each sample.
+			const onTime = new Float64Array (sampleCount);
+			for (let i = 1; i < sampleCount; i++)
+				onTime[i] = onTime[i - 1] + ((laserOn[i - 1] !== 0) ? (times[i] - times[i - 1]) : 0);
+
+			const totalOnTime = onTime[sampleCount - 1];
+			if ((totalOnTime > 0) && (estimatedTotal > 0)) {
+				for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+					const targetOnTime = lineStartTimes[lineIndex] / estimatedTotal * totalOnTime;
+					const sampleIndex = Math.min (LayerViewImpl.countSortedBelow (onTime, targetOnTime, false), sampleCount - 1);
+					lineStartTimes[lineIndex] = times[sampleIndex];
+				}
+				this.timingSource = "recording-approximate";
+				this.lineStartTimes = lineStartTimes;
+				this.applyTimeCap ();
+				return;
+			}
+		}
+
+		// Recording without laser state: stretch the estimate over the recorded duration.
+		const stretch = estimatedTotal > 0 ? this.timelineDuration / estimatedTotal : 0;
+		for (let lineIndex = 0; lineIndex < lineCount; lineIndex++)
+			lineStartTimes[lineIndex] *= stretch;
+		this.timingSource = "recording-approximate";
+		this.lineStartTimes = lineStartTimes;
+		this.applyTimeCap ();
+	}
+
+	// Matches the marking vectors (hatch lines and polylines, in toolpath order) to the laser-on
+	// runs of the recording. A matched vector starts at the first sample of its run and ends with
+	// the last run that still lies on it (vectors can be split into several runs, e.g. at
+	// corners). Vectors without a run (too short to be sampled) are interpolated between their
+	// matched neighbours by estimated duration. Returns the line start times, or null if no
+	// vector could be matched.
+	alignLinesToRecording (times, laserOn)
+	{
+		const lineCount = this.lineDurations.length;
+		const sampleCount = times.length;
+		const points = this.layerPointsArray;
+		const coords = this.linesCoordinates;
+		const tolerance = LAYERVIEW_TIMING_MATCHTOLERANCE;
+		const toleranceSq = tolerance * tolerance;
+
+		const runStartSamples = [];
+		const runEndSamples = [];
+		for (let i = 0; i < sampleCount; i++) {
+			if ((laserOn[i] !== 0) && ((i === 0) || (laserOn[i - 1] === 0)))
+				runStartSamples.push (i);
+			if ((laserOn[i] !== 0) && ((i === sampleCount - 1) || (laserOn[i + 1] === 0)))
+				runEndSamples.push (i);
+		}
+		const runCount = runStartSamples.length;
+		if (runCount === 0)
+			return null;
+
+		const groupFirstLines = [];
+		for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+			if ((lineIndex === 0) || (this.lineGroupIDs[lineIndex] !== this.lineGroupIDs[lineIndex - 1]))
+				groupFirstLines.push (lineIndex);
+		}
+		const groupCount = groupFirstLines.length;
+		groupFirstLines.push (lineCount);
+
+		const groupDurations = new Float64Array (groupCount);
+		for (let group = 0; group < groupCount; group++) {
+			for (let lineIndex = groupFirstLines[group]; lineIndex < groupFirstLines[group + 1]; lineIndex++)
+				groupDurations[group] += this.lineDurations[lineIndex];
+		}
+
+		let bounds = null;
+		let boundsGroup = -1;
+		const runLiesOnGroup = (run, group) => {
+			const sample = runStartSamples[run];
+			const px = points[sample * 2];
+			const py = points[sample * 2 + 1];
+			const firstLine = groupFirstLines[group];
+			const lastLine = Math.min (groupFirstLines[group + 1], firstLine + LAYERVIEW_TIMING_MAXGROUPLINES);
+
+			if (boundsGroup !== group) {
+				bounds = { minx: Infinity, miny: Infinity, maxx: -Infinity, maxy: -Infinity };
+				for (let lineIndex = firstLine; lineIndex < lastLine; lineIndex++) {
+					for (let corner = 0; corner < 2; corner++) {
+						const x = coords[lineIndex * 4 + corner * 2];
+						const y = coords[lineIndex * 4 + corner * 2 + 1];
+						bounds.minx = Math.min (bounds.minx, x);
+						bounds.maxx = Math.max (bounds.maxx, x);
+						bounds.miny = Math.min (bounds.miny, y);
+						bounds.maxy = Math.max (bounds.maxy, y);
+					}
+				}
+				boundsGroup = group;
+			}
+			if ((px < bounds.minx - tolerance) || (px > bounds.maxx + tolerance) || (py < bounds.miny - tolerance) || (py > bounds.maxy + tolerance))
+				return false;
+
+			for (let lineIndex = firstLine; lineIndex < lastLine; lineIndex++) {
+				const arrayIndex = lineIndex * 4;
+				if (LayerViewImpl.pointSegmentDistanceSq (px, py, coords[arrayIndex], coords[arrayIndex + 1], coords[arrayIndex + 2], coords[arrayIndex + 3]) < toleranceSq)
+					return true;
+			}
+			return false;
+		};
+
+		const groupStarts = new Float64Array (groupCount).fill (NaN);
+		const groupEnds = new Float64Array (groupCount).fill (NaN);
+		let matchedGroups = 0;
+		let nextRun = 0;
+		for (let group = 0; (group < groupCount) && (nextRun < runCount); group++) {
+			const lastCandidate = Math.min (nextRun + LAYERVIEW_TIMING_RUNLOOKAHEAD, runCount);
+			for (let run = nextRun; run < lastCandidate; run++) {
+				if (!runLiesOnGroup (run, group))
+					continue;
+
+				let lastRun = run;
+				while ((lastRun + 1 < runCount) && runLiesOnGroup (lastRun + 1, group))
+					lastRun++;
+
+				groupStarts[group] = times[runStartSamples[run]];
+				groupEnds[group] = times[runEndSamples[lastRun]];
+				nextRun = lastRun + 1;
+				matchedGroups++;
+				break;
+			}
+		}
+
+		if (matchedGroups === 0)
+			return null;
+
+		// Unmatched vectors share the time between the surrounding matched ones.
+		let previousEnd = times[0];
+		let group = 0;
+		while (group < groupCount) {
+			if (!Number.isNaN (groupStarts[group])) {
+				previousEnd = Math.max (groupEnds[group], previousEnd);
+				group++;
+				continue;
+			}
+
+			let stretchEnd = group;
+			let stretchDuration = 0.0;
+			while ((stretchEnd < groupCount) && Number.isNaN (groupStarts[stretchEnd])) {
+				stretchDuration += groupDurations[stretchEnd];
+				stretchEnd++;
+			}
+			const nextStart = (stretchEnd < groupCount) ? groupStarts[stretchEnd] : times[sampleCount - 1];
+			const available = Math.max (nextStart - previousEnd, 0.0);
+
+			let currentTime = previousEnd;
+			for (let stretchGroup = group; stretchGroup < stretchEnd; stretchGroup++) {
+				const share = (stretchDuration > 0) ? groupDurations[stretchGroup] / stretchDuration : 1.0 / (stretchEnd - group);
+				groupStarts[stretchGroup] = currentTime;
+				currentTime += share * available;
+				groupEnds[stretchGroup] = currentTime;
+			}
+			group = stretchEnd;
+		}
+
+		const lineStartTimes = new Float64Array (lineCount);
+		let latestTime = -Infinity;
+		for (let currentGroup = 0; currentGroup < groupCount; currentGroup++) {
+			const groupDuration = groupDurations[currentGroup];
+			const span = groupEnds[currentGroup] - groupStarts[currentGroup];
+			let elapsed = 0.0;
+			for (let lineIndex = groupFirstLines[currentGroup]; lineIndex < groupFirstLines[currentGroup + 1]; lineIndex++) {
+				const startTime = groupStarts[currentGroup] + ((groupDuration > 0) ? (elapsed / groupDuration) * span : 0.0);
+				// Keep the start times sorted for the binary search in applyTimeCap.
+				latestTime = Math.max (latestTime, startTime);
+				lineStartTimes[lineIndex] = latestTime;
+				elapsed += this.lineDurations[lineIndex];
+			}
+		}
+
+		this.timingMatchRatio = matchedGroups / groupCount;
+		return lineStartTimes;
+	}
+
+	getTimelineDuration ()
+	{
+		return this.timelineDuration;
+	}
+
+	// Share (0..1) of marking vectors that were matched to the recording by updateTiming.
+	getTimingMatchRatio ()
+	{
+		return this.timingMatchRatio;
+	}
+
+	getTimingSource ()
+	{
+		return this.timingSource;
+	}
+
+	// Draws only what happened up to fraction (0..1) of the layer timeline.
+	setTimeCapFraction (fraction)
+	{
+		const value = Number (fraction);
+		this.timeCapFraction = Number.isFinite (value) ? Math.min (Math.max (value, 0.0), 1.0) : 1.0;
+		this.applyTimeCap ();
+
+		if ((this.highlightLineIndex >= 0) && (this.highlightLineIndex >= this.visibleLineCount))
+			this.clearHighlight ();
+		this.RenderScene (true);
+	}
+
+	applyTimeCap ()
+	{
+		if (!this.glInstance)
+			return;
+
+		const capped = this.timeCapFraction < 1.0;
+		const capTime = this.timeCapFraction * this.timelineDuration;
+
+		const lineCount = Math.floor (this.linesCoordinates.length / 4);
+		this.visibleLineCount = lineCount;
+		if (capped && this.lineStartTimes && (this.lineStartTimes.length === lineCount))
+			this.visibleLineCount = LayerViewImpl.countSortedBelow (this.lineStartTimes, capTime, true);
+
+		const linesElement = this.glInstance.findElement ("layerdata_lines");
+		if (linesElement && (typeof linesElement.setVisibleLineCount === "function"))
+			linesElement.setVisibleLineCount (this.visibleLineCount);
+
+		const endPointsElement = this.glInstance.findElement ("layerdata_endpoints");
+		if (endPointsElement && (typeof endPointsElement.setDrawCount === "function"))
+			endPointsElement.setDrawCount (this.visibleLineCount * 2);
+
+		const jumpsElement = this.glInstance.findElement ("layerdata_jumps");
+		if (jumpsElement && this.jumpTargetLines && (typeof jumpsElement.setVisibleLineCount === "function"))
+			jumpsElement.setVisibleLineCount (LayerViewImpl.countSortedBelow (this.jumpTargetLines, this.visibleLineCount, false));
+
+		const pointCount = this.layerPointsArray ? Math.floor (this.layerPointsArray.length / 2) : 0;
+		let visibleOriginalPoints = pointCount;
+		if (capped && (pointCount > 0)) {
+			const times = this.laser ? this.laser.time : null;
+			if (times && (times.length === pointCount))
+				visibleOriginalPoints = LayerViewImpl.countSortedBelow (times, capTime, true);
+			else
+				visibleOriginalPoints = Math.round (pointCount * this.timeCapFraction);
+		}
+
+		this.visiblePointCount = this.filteredToOriginalIndexMap
+			? LayerViewImpl.countSortedBelow (this.filteredToOriginalIndexMap, visibleOriginalPoints, false)
+			: visibleOriginalPoints;
+
+		const pointsElement = this.glInstance.findElement ("layerdata_points");
+		if (pointsElement && (typeof pointsElement.setDrawCount === "function"))
+			pointsElement.setDrawCount (this.visiblePointCount);
+
+		this.renderNeedsUpdate = true;
 	}
 
 	resolvePointIndex (filteredIndex)
@@ -727,6 +1300,8 @@ class LayerViewImpl {
 					
 	}
 
+	// Velocity in mm/s from the neighbouring samples. Uses the recorded "time" channel (ms)
+	// when present, otherwise a fixed sample period of 10 microseconds.
 	getPointVelocity (pointIndex)
 	{
 		let dT = 1 / 100000;
@@ -735,6 +1310,12 @@ class LayerViewImpl {
 			if (pointIndex > 0) {
 				let arrayIndex = pointIndex * 2;
 				if (arrayIndex + 3 < this.layerPointsArray.length) {
+					const times = this.laser ? this.laser.time : null;
+					if (times && (pointIndex + 1 < times.length)) {
+						const sampleSpan = (times[pointIndex + 1] - times[pointIndex - 1]) * 0.001;
+						if (sampleSpan > 0)
+							dT = sampleSpan * 0.5;
+					}
 					let vX = (this.layerPointsArray[arrayIndex + 2] - this.layerPointsArray[arrayIndex - 2]) / (2 * dT);
 					let vY = (this.layerPointsArray[arrayIndex + 3] - this.layerPointsArray[arrayIndex - 1]) / (2 * dT);
 					let velocity = Math.sqrt (vX * vX + vY * vY);
@@ -810,21 +1391,56 @@ class LayerViewImpl {
 			return;
 		
         this.glInstance.removeElement("layerdata_lines");
+        this.glInstance.removeElement("layerdata_jumps");
         // The highlighted line references indices into linesCoordinates, which are
         // about to be regenerated, so drop any stale highlight overlay.
-        this.glInstance.removeElement("layerdata_highlight");
+        this.removeHighlightGeometry ();
         this.highlightLineIndex = -1;
 		
-		if (this.layerSegmentsArray && this.toolpathVisible) {
+		this.linesCoordinates = [];
+		this.segmentProperties = [];
+		this.lineGroupIDs = null;
+		this.lineDurations = null;
+		this.linePowers = [];
+		this.lineSupportPoints = new Map ();
+		this.lineProfileColors = [];
+		this.jumpTargetLines = null;
+
+		if (this.layerSegmentsArray) {
 				
 			let segmentsArray = this.layerSegmentsArray;
 			var segmentCount = segmentsArray.length;
 			var segmentIndex;
 			
-			this.linesCoordinates = [];
-			this.segmentProperties = [];
-			
 			let vertexcolors = [];
+			// One group per polyline and per hatch line: each is marked with one laser-on run.
+			let lineGroupIDs = [];
+			let lineDurations = [];
+			let groupID = 0;
+			let pushLine = (x1, y1, x2, y2, segmentData, segmentColor, markSpeed, power1, power2, supportPoints) => {
+				if (supportPoints && (supportPoints.length > 0))
+					this.lineSupportPoints.set (this.segmentProperties.length, supportPoints);
+				this.linesCoordinates.push(x1, y1, x2, y2);
+				this.segmentProperties.push (segmentData);
+				this.linePowers.push (power1, power2);
+				vertexcolors.push (segmentColor);
+				lineGroupIDs.push (groupID);
+				lineDurations.push (Math.hypot (x2 - x1, y2 - y1) / markSpeed * 1000.0);
+			};
+			let pointPower = (powers, pointIndex) => {
+				return (powers && (pointIndex < powers.length)) ? Number (powers[pointIndex]) : NaN;
+			};
+			// Support points of one ramp, read from the flat [t, power, ...] list of the segment.
+			let readSupportPoints = (subValues, subOffset, subCount) => {
+				if ((subCount <= 0) || !subValues || ((subOffset + subCount) * 2 > subValues.length))
+					return null;
+				let supportPoints = [];
+				for (let subIndex = 0; subIndex < subCount; subIndex++) {
+					let valueIndex = (subOffset + subIndex) * 2;
+					supportPoints.push ({ t: Number (subValues[valueIndex]), power: Number (subValues[valueIndex + 1]) });
+				}
+				return supportPoints;
+			};
 
 			for (segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
 				var segment = segmentsArray[segmentIndex];
@@ -840,19 +1456,34 @@ class LayerViewImpl {
 					partuuid: partUUID,
 					partname: this.layerPartNames.get (partUUID) || "",
 					partdisabled: partDisabled,
-					laserindex: segment.laserindex
+					laserindex: segment.laserindex,
+					powermode: (typeof segment.powermode === "string") ? segment.powermode : ""
 				}
+				let markSpeed = (Number (segment.laserspeed) > 0) ? Number (segment.laserspeed) : LAYERVIEW_DEFAULTMARKSPEED;
+				let powers = Array.isArray (segment.powers) ? segment.powers : null;
+				let subCounts = Array.isArray (segment.powersubcounts) ? segment.powersubcounts : null;
+				let subValues = Array.isArray (segment.powersubs) ? segment.powersubs : null;
+				let subCountAt = (index) => (subCounts && (index < subCounts.length)) ? Number (subCounts[index]) : 0;
 
 				if ((segment.type === "loop") || (segment.type === "polyline")) {
 					var pointCount = segment.points.length;
 					var pointIndex;
+					// Power at the start of the line that ends in a point; constant factors have no start list.
+					let powerStarts = Array.isArray (segment.powerstarts) ? segment.powerstarts : powers;
+					// Power ramps are given per point, for the line that ends in it. The entry of the first point is unused.
+					let subOffset = subCountAt (0);
 					
 					var oldx = segment.points[0].x;
 					var oldy = segment.points[0].y;
+					groupID++;
 
 					for (pointIndex = 1; pointIndex < pointCount; pointIndex++) {
 						var x = segment.points[pointIndex].x;
 						var y = segment.points[pointIndex].y;
+
+						let subCount = subCountAt (pointIndex);
+						let supportPoints = readSupportPoints (subValues, subOffset, subCount);
+						subOffset += subCount;
 
 						if ((oldx === x) && (oldy === y)) {
 							oldx = x;
@@ -860,9 +1491,8 @@ class LayerViewImpl {
 							continue;
 						}
 
-						this.linesCoordinates.push(oldx, oldy, x, y);
-						this.segmentProperties.push (segmentData);
-						vertexcolors.push (segmentColor);
+						pushLine (oldx, oldy, x, y, segmentData, segmentColor, markSpeed,
+							pointPower (powerStarts, pointIndex), pointPower (powers, pointIndex), supportPoints);
 
 						oldx = x;
 						oldy = y;
@@ -872,6 +1502,7 @@ class LayerViewImpl {
 				if (segment.type === "hatch") {
 					var lineCount = segment.points.length / 2;
 					var lineIndex;
+					let subOffset = 0;
 
 					for (lineIndex = 0; lineIndex < lineCount; lineIndex++) {
 						var x1 = segment.points[lineIndex * 2].x;
@@ -879,34 +1510,303 @@ class LayerViewImpl {
 						var x2 = segment.points[lineIndex * 2 + 1].x;
 						var y2 = segment.points[lineIndex * 2 + 1].y;
 
+						let subCount = subCountAt (lineIndex);
+						let supportPoints = readSupportPoints (subValues, subOffset, subCount);
+						subOffset += subCount;
+
 						if ((x1 === x2) && (y1 === y2)) {
 							continue;
 						}
 
-						this.linesCoordinates.push(x1, y1, x2, y2);
-						this.segmentProperties.push (segmentData);
-						vertexcolors.push (segmentColor);
+						groupID++;
+						pushLine (x1, y1, x2, y2, segmentData, segmentColor, markSpeed,
+							pointPower (powers, lineIndex * 2), pointPower (powers, lineIndex * 2 + 1), supportPoints);
 					}
 
 				}
 			}
-			
-			var layerLinesObject = this.glInstance.scene.getObjectByName("layerdata_lines");
-			if (layerLinesObject)
-				this.glInstance.scene.remove(layerLinesObject);
-			
-			
-			let thickness = this.lineScaleLevel * 0.3;
-			
-			console.log ("rebulding layer preview with thickness: " + thickness);
-			
-			this.glInstance.add2DLineGeometry("layerdata_lines", this.linesCoordinates, 60, thickness, 0x000000, vertexcolors);
+
+			this.lineGroupIDs = lineGroupIDs;
+			this.lineDurations = lineDurations;
+			this.lineProfileColors = vertexcolors;
 		}
+
+		this.computeTiming ();
+		this.buildLinesGeometry ();
+		this.applyTimeCap ();
 
 		this.updateTransform();
 		this.RenderScene(true);		
 
     }
+
+	setToolpathColorMode (mode)
+	{
+		const newMode = TOOLPATH_COLOR_MODES.includes (mode) ? mode : "color";
+		if (newMode === this.toolpathColorMode)
+			return;
+		this.toolpathColorMode = newMode;
+		this.refreshToolpathColors ();
+		this.refreshPointColors ();
+	}
+
+	getToolpathColorMode ()
+	{
+		return this.toolpathColorMode;
+	}
+
+	setColorMap (name, inverted)
+	{
+		this.colorMapName = name;
+		this.colorMapInverted = inverted === true;
+		if (LAYERVIEW_COLORMAPMODES.includes (this.toolpathColorMode)) {
+			this.refreshToolpathColors ();
+			this.refreshPointColors ();
+		}
+	}
+
+	// Value range of the power (W), time (ms) or velocity (mm/s) mode. Pass null to use the range of the loaded layer.
+	setColorRange (mode, minValue, maxValue)
+	{
+		if (!(mode in this.colorRanges))
+			return;
+		const minimum = Number (minValue);
+		const maximum = Number (maxValue);
+		const range = ((minValue !== null) && (maxValue !== null) && Number.isFinite (minimum) && Number.isFinite (maximum))
+			? { min: minimum, max: maximum } : null;
+		const previous = this.colorRanges[mode];
+		if ((range === previous) || (range && previous && (range.min === previous.min) && (range.max === previous.max)))
+			return;
+		this.colorRanges[mode] = range;
+		if (this.toolpathColorMode === mode) {
+			this.refreshToolpathColors ();
+			this.refreshPointColors ();
+		}
+	}
+
+	// Range of the laser speeds (mm/s) of the loaded layer, or of the recorded point velocities if the
+	// toolpath has no speeds.
+	getLayerVelocityRange ()
+	{
+		let minimum = Infinity;
+		let maximum = -Infinity;
+		for (const properties of this.segmentProperties) {
+			const speed = Number (properties.laserspeed);
+			if (Number.isFinite (speed) && (speed > 0)) {
+				minimum = Math.min (minimum, speed);
+				maximum = Math.max (maximum, speed);
+			}
+		}
+		if (minimum <= maximum)
+			return { min: minimum, max: maximum };
+		if (this.layerPointsArray && this.layerPointsVelocities && (this.layerPointsVelocities.length > 0))
+			return { min: this.layerPointsMinVelocity, max: this.layerPointsMaxVelocity };
+		return null;
+	}
+
+	static makeColorRangeNormalizer (range)
+	{
+		const span = range.max - range.min;
+		return (value) => (span !== 0) ? (value - range.min) / span : ((value >= range.max) ? 1.0 : 0.0);
+	}
+
+	// Range of the effective laser power (W) over all lines of the loaded layer, including ramp support points.
+	getLayerPowerRange ()
+	{
+		let minimum = Infinity;
+		let maximum = -Infinity;
+		const include = (value) => {
+			if (Number.isFinite (value)) {
+				minimum = Math.min (minimum, value);
+				maximum = Math.max (maximum, value);
+			}
+		};
+		const lineCount = this.segmentProperties.length;
+		for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+			const nominal = Number (this.segmentProperties[lineIndex].laserpower);
+			for (const power of [this.linePowers[lineIndex * 2], this.linePowers[lineIndex * 2 + 1]])
+				include (Number.isFinite (power) ? power : nominal);
+		}
+		for (const supportPoints of this.lineSupportPoints.values ())
+			for (const supportPoint of supportPoints)
+				include (supportPoint.power);
+
+		return (minimum <= maximum) ? { min: minimum, max: maximum } : null;
+	}
+
+	getEffectiveColorRange (mode)
+	{
+		const configured = this.colorRanges[mode];
+		if (configured)
+			return configured;
+		if (mode === "time")
+			return { min: 0.0, max: this.timelineDuration };
+		if (mode === "velocity")
+			return this.getLayerVelocityRange () || { min: 0.0, max: 1.0 };
+		return this.getLayerPowerRange () || { min: 0.0, max: 1.0 };
+	}
+
+	refreshToolpathColors ()
+	{
+		if (!this.glInstance)
+			return;
+		this.buildLinesGeometry ();
+		this.applyTimeCap ();
+		this.updateTransform ();
+		this.RenderScene (true);
+	}
+
+	// Color of every line, and color gradients of power ramps, in the current display mode.
+	buildLinesGeometry ()
+	{
+		if (!this.glInstance)
+			return;
+
+		this.glInstance.removeElement ("layerdata_lines");
+		this.glInstance.removeElement ("layerdata_jumps");
+		this.glInstance.removeElement ("layerdata_endpoints");
+		this.jumpTargetLines = null;
+
+		const lineCount = this.segmentProperties.length;
+		if (!this.toolpathVisible || (lineCount === 0))
+			return;
+
+		const mode = this.toolpathColorMode;
+		const colors = new Array (lineCount);
+		let gradients = null;
+
+		if (LAYERVIEW_COLORMAPMODES.includes (mode)) {
+			const sampler = new ColorMapSampler (this.colorMapName, this.colorMapInverted);
+			const normalize = LayerViewImpl.makeColorRangeNormalizer (this.getEffectiveColorRange (mode));
+
+			if (mode === "time") {
+				const startTimes = (this.lineStartTimes && (this.lineStartTimes.length === lineCount)) ? this.lineStartTimes : null;
+				for (let lineIndex = 0; lineIndex < lineCount; lineIndex++)
+					colors[lineIndex] = sampler.colorAt (startTimes ? normalize (startTimes[lineIndex]) : 0.0);
+			} else if (mode === "velocity") {
+				for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+					const speed = Number (this.segmentProperties[lineIndex].laserspeed);
+					colors[lineIndex] = (Number.isFinite (speed) && (speed > 0)) ? sampler.colorAt (normalize (speed)) : LAYERVIEW_DISABLEDPARTCOLOR;
+				}
+			} else {
+				gradients = new Array (lineCount).fill (null);
+				for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+					const nominal = Number (this.segmentProperties[lineIndex].laserpower);
+					const resolve = (power) => Number.isFinite (power) ? power : nominal;
+					const knots = [{ t: 0.0, power: resolve (this.linePowers[lineIndex * 2]) }];
+					const supportPoints = this.lineSupportPoints.get (lineIndex);
+					if (supportPoints)
+						for (const supportPoint of supportPoints)
+							knots.push ({ t: supportPoint.t, power: resolve (supportPoint.power) });
+					knots.push ({ t: 1.0, power: resolve (this.linePowers[lineIndex * 2 + 1]) });
+
+					colors[lineIndex] = sampler.colorAt (normalize (knots[0].power));
+					if (knots.some ((knot) => knot.power !== knots[0].power))
+						gradients[lineIndex] = LayerViewImpl.buildColorGradient (knots, normalize, sampler);
+				}
+			}
+		} else {
+			for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+				if (mode === "type")
+					colors[lineIndex] = (this.segmentProperties[lineIndex].type === "hatch") ? this.typeColors.hatch : this.typeColors.polyline;
+				else if (mode === "laseron")
+					colors[lineIndex] = LAYERVIEW_LASERONCOLOR;
+				else
+					colors[lineIndex] = this.lineProfileColors[lineIndex];
+			}
+		}
+
+		for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+			if (this.segmentProperties[lineIndex].partdisabled) {
+				colors[lineIndex] = LAYERVIEW_DISABLEDPARTCOLOR;
+				if (gradients)
+					gradients[lineIndex] = null;
+			}
+		}
+
+		const thickness = this.lineScaleLevel * 0.3;
+		this.glInstance.add2DLineGeometry ("layerdata_lines", this.linesCoordinates, 60, thickness, 0x000000, colors, gradients);
+
+		if (mode === "laseron")
+			this.buildJumpGeometry (thickness * LAYERVIEW_JUMPTHICKNESSFACTOR);
+
+		// Two points per line, so the time cap shows the points of the first visibleLineCount lines.
+		if (this.endPointsVisible)
+			this.glInstance.add2DScreenPointsGeometry ("layerdata_endpoints", new Float32Array (this.linesCoordinates), 62,
+				LAYERVIEW_ENDPOINTPIXELS * this.glInstance.getPixelRatio (), this.endPointColor, null);
+	}
+
+	setEndPointsVisible (visible)
+	{
+		const newVisible = visible === true;
+		if (newVisible === this.endPointsVisible)
+			return;
+		this.endPointsVisible = newVisible;
+		this.refreshToolpathColors ();
+	}
+
+	// Jumps between marking vectors: from the end of a polyline or hatch line to the start of the next one.
+	buildJumpGeometry (thickness)
+	{
+		const coords = this.linesCoordinates;
+		const groupIDs = this.lineGroupIDs;
+		const lineCount = this.segmentProperties.length;
+		if (!groupIDs || (groupIDs.length !== lineCount))
+			return;
+
+		const jumpCoordinates = [];
+		const jumpTargetLines = [];
+		for (let lineIndex = 1; lineIndex < lineCount; lineIndex++) {
+			if (groupIDs[lineIndex] === groupIDs[lineIndex - 1])
+				continue;
+			const fromX = coords[(lineIndex - 1) * 4 + 2];
+			const fromY = coords[(lineIndex - 1) * 4 + 3];
+			const toX = coords[lineIndex * 4];
+			const toY = coords[lineIndex * 4 + 1];
+			if ((fromX === toX) && (fromY === toY))
+				continue;
+			jumpCoordinates.push (fromX, fromY, toX, toY);
+			jumpTargetLines.push (lineIndex);
+		}
+
+		this.jumpTargetLines = jumpTargetLines;
+		if (jumpTargetLines.length > 0)
+			this.glInstance.add2DLineGeometry ("layerdata_jumps", jumpCoordinates, 59, thickness, this.typeColors.travel,
+				new Array (jumpTargetLines.length).fill (this.typeColors.travel));
+	}
+
+	// Gradient stops [t, color, ...] of a piecewise linear power ramp. Pieces are split where the
+	// normalized power crosses a color map stop, so that linear color interpolation between the
+	// stops reproduces the color map exactly.
+	static buildColorGradient (knots, normalize, sampler)
+	{
+		const positions = sampler.positions;
+		let startValue = normalize (knots[0].power);
+		const gradient = [0.0, sampler.colorAt (startValue)];
+
+		for (let knotIndex = 1; knotIndex < knots.length; knotIndex++) {
+			const ta = knots[knotIndex - 1].t;
+			const tb = knots[knotIndex].t;
+			const endValue = normalize (knots[knotIndex].power);
+
+			if (endValue !== startValue) {
+				const lower = Math.min (startValue, endValue);
+				const upper = Math.max (startValue, endValue);
+				const crossings = positions.filter ((position) => (position > lower) && (position < upper));
+				if (endValue < startValue)
+					crossings.reverse ();
+				for (const position of crossings) {
+					const t = ta + (position - startValue) / (endValue - startValue) * (tb - ta);
+					gradient.push (t, sampler.colorAt (position));
+				}
+			}
+
+			gradient.push (tb, sampler.colorAt (endValue));
+			startValue = endValue;
+		}
+
+		return gradient;
+	}
 
     Drag(deltaX, deltaY) {
 
@@ -1102,7 +2002,7 @@ class LayerViewImpl {
 	// those boxes have an empty uuid.
 	getPartBoundingBoxes ()
 	{
-		if (!this.layerSegmentsArray || !this.toolpathVisible)
+		if (!this.layerSegmentsArray)
 			return [];
 
 		const cacheKey = [this.transformAngleDegrees, this.rotationCenter.x, this.rotationCenter.y,
@@ -1196,11 +2096,11 @@ class LayerViewImpl {
 	 */
 	pickSegmentAtMachinePoint (machineX, machineY, toleranceMM)
 	{
-		if (!this.linesCoordinates || !this.segmentProperties)
+		if (!this.toolpathVisible || !this.linesCoordinates || !this.segmentProperties)
 			return null;
 
 		const coords = this.linesCoordinates;
-		const lineCount = Math.floor (coords.length / 4);
+		const lineCount = Math.min (Math.floor (coords.length / 4), this.visibleLineCount);
 		if (lineCount <= 0)
 			return null;
 
@@ -1233,8 +2133,18 @@ class LayerViewImpl {
 			}
 		}
 
-		if (bestIndex >= 0 && bestIndex < this.segmentProperties.length)
-			return { ...this.segmentProperties[bestIndex], lineIndex: bestIndex };
+		if (bestIndex >= 0 && bestIndex < this.segmentProperties.length) {
+			const power1 = this.linePowers[bestIndex * 2];
+			const power2 = this.linePowers[bestIndex * 2 + 1];
+			const supportPoints = this.lineSupportPoints.get (bestIndex);
+			return {
+				...this.segmentProperties[bestIndex],
+				lineIndex: bestIndex,
+				power1: Number.isFinite (power1) ? power1 : null,
+				power2: Number.isFinite (power2) ? power2 : null,
+				supportpoints: supportPoints ? supportPoints.map ((point) => ({ ...point })) : null
+			};
+		}
 
 		return null;
 	}
@@ -1250,37 +2160,144 @@ class LayerViewImpl {
 		if (!this.glInstance)
 			return;
 
+		if (lineIndex === undefined || lineIndex === null || lineIndex < 0 || !this.linesCoordinates || !this.toolpathVisible ||
+			((lineIndex * 4 + 3) >= this.linesCoordinates.length))
+			lineIndex = -1;
+
+		// Hovering moves along the same line most of the time; keep the overlay then.
+		if ((lineIndex === this.highlightLineIndex) && ((lineIndex < 0) || (this.highlightScaling === this.transform.scaling)))
+			return;
+
+		this.highlightLineIndex = lineIndex;
+		this.buildHighlightGeometry ();
+		this.positionHighlightGeometry ();
+		this.RenderScene (true);
+	}
+
+	removeHighlightGeometry ()
+	{
 		this.glInstance.removeElement ("layerdata_highlight");
-		this.highlightLineIndex = -1;
+		this.glInstance.removeElement ("layerdata_highlightarrow");
+		this.glInstance.removeElement ("layerdata_highlightpoints");
+		this.highlightSupportPoints = null;
+	}
 
-		if (lineIndex === undefined || lineIndex === null || lineIndex < 0 || !this.linesCoordinates) {
-			this.RenderScene (true);
-			return;
-		}
+	// Creates the overlay of highlightLineIndex: the line with an arrow head at its end point
+	// (the marking direction) and, for nonlinear power ramps, its support points including
+	// both end points. Uses the toolpath coordinates of linesCoordinates.
+	buildHighlightGeometry ()
+	{
+		this.removeHighlightGeometry ();
+		this.highlightScaling = this.transform.scaling;
 
+		const lineIndex = this.highlightLineIndex;
 		const arrayIndex = lineIndex * 4;
-		if (arrayIndex + 3 >= this.linesCoordinates.length) {
-			this.RenderScene (true);
+		if ((lineIndex < 0) || (arrayIndex + 3 >= this.linesCoordinates.length))
 			return;
-		}
 
-		const highlightCoordinates = [
-			this.linesCoordinates[arrayIndex],
-			this.linesCoordinates[arrayIndex + 1],
-			this.linesCoordinates[arrayIndex + 2],
-			this.linesCoordinates[arrayIndex + 3]
-		];
-
+		const x1 = this.linesCoordinates[arrayIndex];
+		const y1 = this.linesCoordinates[arrayIndex + 1];
+		const x2 = this.linesCoordinates[arrayIndex + 2];
+		const y2 = this.linesCoordinates[arrayIndex + 3];
 		// Noticeably thicker than the regular preview lines (lineScaleLevel * 0.3)
 		// and drawn at a higher z so it sits above lines (60) and points (61).
 		const highlightThickness = this.lineScaleLevel * 1.1;
-		const highlightColor = 0x00e5ff;
+		this.glInstance.add2DLineGeometry ("layerdata_highlight", [x1, y1, x2, y2], 63, highlightThickness, LAYERVIEW_HIGHLIGHTCOLOR, [LAYERVIEW_HIGHLIGHTCOLOR]);
 
-		this.glInstance.add2DLineGeometry ("layerdata_highlight", highlightCoordinates, 63, highlightThickness, highlightColor, [highlightColor]);
-		this.highlightLineIndex = lineIndex;
+		const length = Math.hypot (x2 - x1, y2 - y1);
+		const scaling = (this.transform.scaling > 0) ? this.transform.scaling : 1.0;
+		const arrowLength = Math.min (Math.max (LAYERVIEW_HIGHLIGHTARROWPIXELS / scaling, highlightThickness * LAYERVIEW_HIGHLIGHTARROWTHICKNESSFACTOR), length * 0.5);
+		if (arrowLength > 0) {
+			const backX = (x1 - x2) / length;
+			const backY = (y1 - y2) / length;
+			const cosine = Math.cos (LAYERVIEW_HIGHLIGHTARROWANGLE);
+			const sine = Math.sin (LAYERVIEW_HIGHLIGHTARROWANGLE);
+			const arrowCoordinates = [
+				x2, y2, x2 + arrowLength * (backX * cosine - backY * sine), y2 + arrowLength * (backX * sine + backY * cosine),
+				x2, y2, x2 + arrowLength * (backX * cosine + backY * sine), y2 + arrowLength * (-backX * sine + backY * cosine)
+			];
+			this.glInstance.add2DLineGeometry ("layerdata_highlightarrow", arrowCoordinates, 63, highlightThickness * LAYERVIEW_HIGHLIGHTARROWWINGFACTOR,
+				LAYERVIEW_HIGHLIGHTCOLOR, [LAYERVIEW_HIGHLIGHTCOLOR, LAYERVIEW_HIGHLIGHTCOLOR]);
+		}
 
-		this.updateTransform ();
-		this.RenderScene (true);
+		const supportPoints = this.lineSupportPoints.get (lineIndex);
+		if (!supportPoints)
+			return;
+
+		const knots = [{ t: 0.0, power: this.linePowers[lineIndex * 2] }, ...supportPoints, { t: 1.0, power: this.linePowers[lineIndex * 2 + 1] }];
+		const knotCoordinates = new Float32Array (knots.length * 2);
+		const knotColors = [];
+		knots.forEach ((knot, knotIndex) => {
+			knotCoordinates[knotIndex * 2] = x1 + knot.t * (x2 - x1);
+			knotCoordinates[knotIndex * 2 + 1] = y1 + knot.t * (y2 - y1);
+			knotColors.push (((knotIndex === 0) || (knotIndex === knots.length - 1)) ? LAYERVIEW_SUPPORTENDPOINTCOLOR : LAYERVIEW_SUPPORTPOINTCOLOR);
+		});
+
+		this.glInstance.add2DScreenPointsGeometry ("layerdata_highlightpoints", knotCoordinates, 64,
+			LAYERVIEW_SUPPORTPOINTPIXELS * this.glInstance.getPixelRatio (), LAYERVIEW_SUPPORTPOINTCOLOR, knotColors);
+		this.highlightSupportPoints = { knots, x1, y1, x2, y2, length };
+	}
+
+	positionHighlightGeometry ()
+	{
+		const placementOffset = this.transformToolpathPoint (0, 0);
+		const positionX = this.transform.x + (this.origin.x + placementOffset.x) * this.transform.scaling;
+		const positionY = this.transform.y - (this.origin.y + placementOffset.y) * this.transform.scaling;
+
+		for (const identifier of ["layerdata_highlight", "layerdata_highlightarrow", "layerdata_highlightpoints"]) {
+			const element = this.glInstance.findElement (identifier);
+			if (element) {
+				element.setPositionXY (positionX, positionY);
+				element.setScaleXY (this.transform.scaling, - this.transform.scaling);
+				element.setRotationZ (-this.transformAngleDegrees * Math.PI / 180.0);
+			}
+		}
+	}
+
+	// Support point of the highlighted nonlinear ramp under the viewport position, with its
+	// neighbours, so the piece of the ramp on either side can be shown; null if none.
+	/**
+	 * @param {number} screenX
+	 * @param {number} screenY
+	 * @param {number} [pixelTolerance]
+	 */
+	pickHighlightSupportPoint (screenX, screenY, pixelTolerance = 3)
+	{
+		if (!this.glInstance || !this.highlightSupportPoints)
+			return null;
+
+		const pointsElement = this.glInstance.findElement ("layerdata_highlightpoints");
+		if (!pointsElement || (typeof pointsElement.findNearestPoint !== "function"))
+			return null;
+
+		const knotIndex = pointsElement.findNearestPoint (screenX, screenY, pixelTolerance);
+		const { knots, x1, y1, x2, y2, length } = this.highlightSupportPoints;
+		if ((knotIndex < 0) || (knotIndex >= knots.length))
+			return null;
+
+		const describe = (index) => {
+			if ((index < 0) || (index >= knots.length))
+				return null;
+			const knot = knots[index];
+			return {
+				t: knot.t,
+				power: Number.isFinite (knot.power) ? knot.power : null,
+				distance: knot.t * length
+			};
+		};
+
+		const knot = knots[knotIndex];
+		return {
+			lineIndex: this.highlightLineIndex,
+			index: knotIndex,
+			count: knots.length,
+			x: x1 + knot.t * (x2 - x1),
+			y: y1 + knot.t * (y2 - y1),
+			length,
+			...describe (knotIndex),
+			previous: describe (knotIndex - 1),
+			next: describe (knotIndex + 1)
+		};
 	}
 
 	clearHighlight ()
