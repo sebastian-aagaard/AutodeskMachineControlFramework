@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_ui_modulefactory.hpp"
 
 #include "amc_ui_module_grid.hpp"
+#include "amc_ui_gridrowminheight.hpp"
 
 #include "amc_api_constants.hpp"
 #include "amc_resourcepackage.hpp"
@@ -274,25 +275,13 @@ CUIModule_Grid::CUIModule_Grid(pugi::xml_node& xmlNode, const std::string& sPath
 			// Optional minimum height. Only meaningful for rows whose size is not fixed by
 			// their height, that is free and auto rows. A missing or non-positive value
 			// keeps the default behavior of the row unit.
-			float fRowMinHeight = 0.0f;
-			bool bRowHasMinHeight = false;
-			std::string sRowMinHeightUnit;
-			auto rowMinHeightAttrib = childNode.attribute("minheight");
-			if (!rowMinHeightAttrib.empty()) {
-				fRowMinHeight = rowMinHeightAttrib.as_float(0.0f);
-				if (fRowMinHeight > 0.0f) {
-					std::string sLowerUnit = AMCCommon::CUtils::toLowerString(sUnit);
-					if (sLowerUnit != "free" && sLowerUnit != "auto") {
-						auto pLogger = m_pUIModuleEnvironment->getLogger();
-						pLogger->logMessage("Grid '" + m_sName + "': the minheight attribute has no effect on a row with the unit '" + sUnit + "' and is ignored.", LOG_SUBSYSTEM_SYSTEM, AMC::eLogLevel::Warning);
-					} else {
-						bRowHasMinHeight = true;
-						sRowMinHeightUnit = AMCCommon::CUtils::toLowerString(AMCCommon::CUtils::trimString(childNode.attribute("minheightunit").as_string()));
-					}
-				}
+			auto minHeight = CUIGridRowMinHeight::readFromXML(childNode, sUnit);
+			if (minHeight.m_bIgnoredOnUnit) {
+				auto pLogger = m_pUIModuleEnvironment->getLogger();
+				pLogger->logMessage("Grid '" + m_sName + "': the minheight attribute has no effect on a row with the unit '" + sUnit + "' and is ignored.", LOG_SUBSYSTEM_SYSTEM, AMC::eLogLevel::Warning);
 			}
 
-			m_Rows.push_back(std::make_shared<CUIModule_GridRow>((float) rowHeight, sUnit, fRowMinHeight, bRowHasMinHeight, sRowMinHeightUnit));
+			m_Rows.push_back(std::make_shared<CUIModule_GridRow>((float) rowHeight, sUnit, minHeight.m_fHeight, minHeight.m_bIsSet, minHeight.m_sUnit));
 		}
 
 	}
