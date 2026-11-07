@@ -117,6 +117,9 @@ public:
 
 			auto pSignal = pUIEnvironment->PrepareSignal("main", "signal_startexecution");
 			pSignal->SetString("jobuuid", sBuildUUID);
+			// Gives the build execution the machine creates a user, so the Build History page knows
+			// who started the run.
+			pSignal->SetString("useruuid", pUIEnvironment->GetCurrentUserUUID());
 			pSignal->Trigger();
 
 			pUIEnvironment->ActivatePage("buildstatus");

@@ -187,6 +187,75 @@ static void updateLayerDisplays(LibMCEnv::PStateEnvironment pStateEnvironment, i
 
 
 /*************************************************************************************************************************
+ Build history (build executions)
+**************************************************************************************************************************/
+
+// Value of "jobinfo/executionuuid" while no build execution is being tracked.
+static const std::string NOEXECUTION_UUID = "00000000-0000-0000-0000-000000000000";
+
+// The "Build History" page lists the build executions stored in the data model, and the only thing
+// that creates such an entry is IBuild::StartExecution(). Every execution is created as soon as the
+// machine starts the build (see "initexecution"), which is what makes a running build show up there
+// with the status "inprocess" and a live duration.
+static void startBuildExecution(LibMCEnv::PStateEnvironment pStateEnvironment, LibMCEnv::PBuild pBuildJob, const std::string& sDescription, const std::string& sUserUUID) {
+	// An empty user is legal and records the execution without an owner - that is the case for an
+	// execution started by the remote master, which does not carry a user in its signal.
+	std::string sAttachedUserUUID = ((sUserUUID.empty()) || (sUserUUID == NOEXECUTION_UUID)) ? "" : sUserUUID;
+
+	std::string sExecutionUUID;
+	try {
+		sExecutionUUID = pBuildJob->StartExecution(sDescription, sAttachedUserUUID)->GetUUID();
+	}
+	catch (std::exception& e) {
+		pStateEnvironment->LogWarning(std::string("Could not create the build execution: ") + e.what());
+	}
+
+	if (sExecutionUUID.empty())
+		sExecutionUUID = NOEXECUTION_UUID;
+
+	pStateEnvironment->SetStringParameter("jobinfo", "executionuuid", sExecutionUUID);
+	if (sExecutionUUID != NOEXECUTION_UUID)
+		pStateEnvironment->LogMessage("Created build execution " + sExecutionUUID + ".");
+}
+
+// Closes the build execution that is tracked in "jobinfo/executionuuid", marking it as finished or
+// failed. This is what turns the "inprocess" entry of a running build into a final one in the
+// "Build History" page. The call is idempotent - an execution that already carries a final status
+// is left alone - so a state that is visited repeatedly (the fatal-error loop) is harmless, and only
+// the very last step clears the tracked UUID. Besides the finish and cancel states, "init" uses this
+// to close an execution that a killed server session left behind, because the UUID parameter is
+// persistent and therefore survives a restart. Recording history stays best-effort: a failing
+// update is logged and never alters the state transition.
+static void closeBuildExecution(LibMCEnv::PStateEnvironment pStateEnvironment, const bool bSuccessful) {
+	auto sExecutionUUID = pStateEnvironment->GetStringParameter("jobinfo", "executionuuid");
+	if (sExecutionUUID == NOEXECUTION_UUID)
+		return;
+
+	try {
+		if (!pStateEnvironment->HasBuildExecution(sExecutionUUID)) {
+			pStateEnvironment->LogWarning("Build execution " + sExecutionUUID + " not found - build history not updated.");
+		}
+		else {
+			auto pExecution = pStateEnvironment->GetBuildExecution(sExecutionUUID);
+			if (pExecution->IsInProcess()) {
+				if (bSuccessful)
+					pExecution->SetStatusToFinished();
+				else
+					pExecution->SetStatusToFailed();
+
+				pStateEnvironment->LogMessage("Build execution " + sExecutionUUID + " marked as " + (bSuccessful ? "finished" : "failed") + ".");
+			}
+		}
+	}
+	catch (std::exception& e) {
+		pStateEnvironment->LogWarning(std::string("Could not update the build execution ") + sExecutionUUID + ": " + e.what());
+	}
+
+	pStateEnvironment->SetStringParameter("jobinfo", "executionuuid", NOEXECUTION_UUID);
+}
+
+
+/*************************************************************************************************************************
  Class definition of CMainState_WaitForInit
 **************************************************************************************************************************/
 class CMainState_WaitForInit : public virtual CMainState {
@@ -239,6 +308,12 @@ public:
 		pStateEnvironment->SetDoubleParameter("jobinfo", "totalheight", 0.0);
 		pStateEnvironment->SetDoubleParameter("jobinfo", "currentheight", 0.0);
 		pStateEnvironment->SetBoolParameter("jobinfo", "printinprogress", false);
+		pStateEnvironment->SetStringParameter("jobinfo", "startuseruuid", NOEXECUTION_UUID);
+
+		// A session that was killed while a build ran never reached the finish or cancel state, and
+		// the persistent execution UUID still points at its row. Close it as failed before this
+		// session takes over, so the "Build History" page does not keep a phantom running build.
+		closeBuildExecution(pStateEnvironment, false);
 
 		// Reset the execution state.
 		pStateEnvironment->SetBoolParameter("execution", "executionactive", false);
@@ -294,6 +369,14 @@ public:
 		if (pStateEnvironment->WaitForSignal("signal_startexecution", 0, pSignalHandler)) {
 			auto sJobUUID = pSignalHandler->GetUUID("jobuuid");
 			pStateEnvironment->SetStringParameter("jobinfo", "jobuuid", sJobUUID);
+
+			// The operator that pressed "Start Execution" owns the build execution this run creates.
+			// The parameter is optional, so a start by the remote master simply has no owner.
+			auto sStartUserUUID = pSignalHandler->GetString("useruuid");
+			if (sStartUserUUID.empty())
+				sStartUserUUID = NOEXECUTION_UUID;
+			pStateEnvironment->SetStringParameter("jobinfo", "startuseruuid", sStartUserUUID);
+
 			pSignalHandler->SignalHandled();
 
 			pStateEnvironment->LogMessage("Preparing execution of job " + sJobUUID);
@@ -474,6 +557,11 @@ public:
 
 		pStateEnvironment->LogMessage("Job Name: " + sJobName);
 		pStateEnvironment->LogMessage("Layer Count: " + std::to_string(nLayerCount));
+
+		// Open the build execution before anything that can still fail the run, so that the build
+		// is on record in the "Build History" page from the first second on.
+		startBuildExecution(pStateEnvironment, pBuildJob, "Execution of " + sJobName,
+			pStateEnvironment->GetStringParameter("jobinfo", "startuseruuid"));
 
 		pStateEnvironment->SetStringParameter("jobinfo", "jobname", sJobName);
 		pStateEnvironment->SetIntegerParameter("jobinfo", "currentlayer", 0);
@@ -794,6 +882,8 @@ public:
 		pStateEnvironment->LogMessage("Turning laser off...");
 		setLaserPin(pStateEnvironment, false, 30000);
 
+		closeBuildExecution(pStateEnvironment, true);
+
 		pStateEnvironment->SetBoolParameter("execution", "executionactive", false);
 		pStateEnvironment->SetBoolParameter("execution", "exposing", false);
 		pStateEnvironment->SetBoolParameter("jobinfo", "printinprogress", false);
@@ -833,6 +923,8 @@ public:
 		pStateEnvironment->LogMessage("Canceling execution...");
 		pStateEnvironment->LogMessage("Turning laser off...");
 		setLaserPin(pStateEnvironment, false, 30000);
+
+		closeBuildExecution(pStateEnvironment, false);
 
 		pStateEnvironment->SetBoolParameter("execution", "executionactive", false);
 		pStateEnvironment->SetBoolParameter("execution", "exposing", false);
@@ -874,6 +966,11 @@ public:
 		// Best-effort: assert laser-off and unload any active toolpath.
 		setLaserPin(pStateEnvironment, false, 5000);
 		pStateEnvironment->UnloadAllToolpathes();
+
+		// A run that died here never reaches the finish or cancel state, so close its build
+		// execution as failed on the first pass - the cleared UUID makes the following
+		// iterations of this faulted loop no-ops.
+		closeBuildExecution(pStateEnvironment, false);
 
 		pStateEnvironment->SetBoolParameter("execution", "executionactive", false);
 		pStateEnvironment->SetBoolParameter("execution", "exposing", false);

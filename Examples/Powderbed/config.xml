@@ -73,6 +73,14 @@
 			<parameter name="totalheight" description="Total Height" default="0" type="double" />
 			<parameter name="currentheight" description="Current Height" default="0" type="double"/>
 			<parameter name="printinprogress" description="Execution is in progress" default="0" type="bool"/>
+			<!-- UUID of the build execution started by the last "initexecution". It is the row the
+			     "Build History" page shows for the running build, and is cleared once the execution
+			     is finished or failed. It is persistent so that "init" still knows about an
+			     execution that a killed server session left behind and can close it. -->
+			<parameter name="executionuuid" description="Build Execution UUID" default="00000000-0000-0000-0000-000000000000" type="string" persistent="f98740c9-1810-4594-a8f7-b237432534dd"/>
+			<!-- User that started the current execution, transported by "signal_startexecution".
+			     Attached to the build execution so the build history knows who owned the run. -->
+			<parameter name="startuseruuid" description="User that started the execution" default="00000000-0000-0000-0000-000000000000" type="string"/>
 			<parameter name="exposuretimeout" description="Exposure Timeout (ms)" default="300000" type="int" configschema="com.autodesk.powderbed" configpath="Process/ExposureTimeout"/>
 		</parametergroup>
 
@@ -153,9 +161,12 @@
 			<parameter name="layerindex" description="Requested layer index" default="0" type="int"/>
 		</parametergroup>
 
-		<!-- Operator selects a build and starts execution. jobuuid identifies the build job. -->
+		<!-- Operator selects a build and starts execution. jobuuid identifies the build job,
+		     useruuid the operator that owns the resulting build execution. The user is optional so
+		     that a remote master can start an execution, which is then recorded without an owner. -->
 		<signaldefinition name="signal_startexecution">
 			<parameter name="jobuuid" type="string"/>
+			<optionalparameter name="useruuid" type="string"/>
 		</signaldefinition>
 
 		<!-- Remote master requests exposure of a specific layer. Any layer of the build can be
