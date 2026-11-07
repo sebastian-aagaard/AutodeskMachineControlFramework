@@ -384,13 +384,13 @@
 		/>
 
 		<colors>
-			<!-- Autodesk brand. A dark slate primary (mid-lightness so the client's
-			     dark-mode derivation neither blows it out nor crushes it) with the
-			     Autodesk-blue accent (#0696D7). Reads well with white content
-			     (icons/captions) in both light and dark themes. -->
+			<!-- Powderbed brand (powderbed.com). A dark slate primary (mid-lightness so the
+			     client's dark-mode derivation neither blows it out nor crushes it) with the
+			     Powderbed green accent (#9ADC67). The accent is bright enough for the client
+			     to pair it with dark text on CTAs, mirroring the website's buttons. -->
 			<color name="primary" red="0.145" green="0.161" blue="0.184"/>
 			<color name="secondary" red="0.3" green="0.3" blue="0.3"/>
-			<color name="accent" red="0.024" green="0.588" blue="0.843"/>
+			<color name="accent" red="0.604" green="0.863" blue="0.404"/>
 			<color name="error" red="0.867" green="0.133" blue="0.133"/>
 		</colors>
 
