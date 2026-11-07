@@ -62,6 +62,15 @@
 
   <driver name="scanlab" library="driver_scanlab" type="scanlab-rtc6"/>
 
+  <!-- Sensortherm H4 series pyrometer (a Metis H422, serial 01013) on the machine network.
+       Port 1024 carries the ASCII command protocol, port 1025 the 20 byte measurement
+       stream. Stream mode 0 lets the pyrometer send one packet every 25 microseconds; the
+       driver parses the newest block of packets of every cycle, so the reported sample
+       stays current. Stream mode 1 only sends while the pyrometer controller runs. -->
+  <driver name="pyrometer" library="driver_sensortherm" type="sensortherm-h4" configurationschema="http://schemas.autodesk.com/amc/sensorthermh4/2026/02">
+    <connection ipaddress="10.217.6.1" commandport="1024" streamport="1025" deviceaddress="00" byteorder="big" temperaturefactor="0.1" streammode="0" timeout="1000" connect="true" streaming="true"/>
+  </driver>
+
   <statemachine name="main" description="Main System" initstate="waitforinit" failedstate="fatalerror" library="plugin_main">
 
 		<!-- Build/job information for the currently selected and/or executing job. -->
