@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component xmlns="http://schemas.autodesk.com/netfabb/automaticcomponenttoolkit/2018" 
+	libraryname="MC Driver Sensortherm" namespace="LibMCDriver_Sensortherm" copyright="Autodesk Inc." year="2026" basename="libmcdriver_sensortherm"
+	version="2.0.0">
+	<license>
+		<line value="All rights reserved." />
+		<line value="" />
+		<line value="Redistribution and use in source and binary forms, with or without" />
+		<line value="modification, are permitted provided that the following conditions are met:" />
+		<line value="    * Redistributions of source code must retain the above copyright" />
+		<line value="      notice, this list of conditions and the following disclaimer." />
+		<line value="    * Redistributions in binary form must reproduce the above copyright" />
+		<line value="      notice, this list of conditions and the following disclaimer in the" />
+		<line value="      documentation and/or other materials provided with the distribution." />
+		<line value="    * Neither the name of the Autodesk Inc. nor the" />
+		<line value="      names of its contributors may be used to endorse or promote products" />
+		<line value="      derived from this software without specific prior written permission." />
+		<line value="" />
+		<line value="THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 'AS IS' AND" />
+		<line value="ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED" />
+		<line value="WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE" />
+		<line value="DISCLAIMED. IN NO EVENT SHALL AUTODESK INC. BE LIABLE FOR ANY" />
+		<line value="DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES" />
+		<line value="(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;" />
+		<line value="LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND" />
+		<line value="ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT" />
+		<line value="(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS" />
+		<line value="SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE." />
+		<line value="" />
+	</license>
+	
+	<bindings>
+		<binding language="CppDynamic" indentation="tabs" documentation="1" />
+	</bindings>
+	<implementations>
+		<implementation language="Cpp" indentation="tabs"/>
+	</implementations>
+	
+	
+	<importcomponent uri="../../../ACT/LibMCEnv.xml" namespace="LibMCEnv"/>
+	
+	<errors>
+		<error name="NOTIMPLEMENTED" code="1" description="functionality not implemented" />
+		<error name="INVALIDPARAM" code="2" description="an invalid parameter was passed" />
+		<error name="INVALIDCAST" code="3" description="a type cast failed" />
+		<error name="BUFFERTOOSMALL" code="4" description="a provided buffer is too small" />
+		<error name="GENERICEXCEPTION" code="5" description="a generic exception occurred" />
+		<error name="COULDNOTLOADLIBRARY" code="6" description="the library could not be loaded" />
+		<error name="COULDNOTFINDLIBRARYEXPORT" code="7" description="a required exported symbol could not be found in the library" />
+		<error name="INCOMPATIBLEBINARYVERSION" code="8" description="the version of the binary interface does not match the bindings interface" />
+
+		<error name="DRIVERERROR" code="1000" description="a driver error occured" />
+		<error name="DRIVERNOTINITIALISED" code="1001" description="the driver is not initialised" />
+		<error name="DRIVERNOTCONNECTED" code="1002" description="the driver is not connected to the pyrometer" />
+		<error name="INVALIDDRIVERPROTOCOL" code="1003" description="invalid driver protocol definition" />
+		<error name="INVALIDCONFIGURATIONSCHEMA" code="1004" description="the driver configuration uses an unknown schema" />
+		<error name="DUPLICATECONNECTION" code="1005" description="a connection with the same identifier already exists" />
+		<error name="CONNECTIONNOTFOUND" code="1006" description="no connection with the given identifier exists" />
+		<error name="PROTOCOLTIMEOUT" code="1007" description="the pyrometer did not answer within the configured timeout" />
+		<error name="PROTOCOLRESPONSE" code="1008" description="the pyrometer sent an unexpected response" />
+		<error name="INVALIDPARAMETERVALUE" code="1009" description="the pyrometer rejected the parameter value" />
+		<error name="INVALIDINDEX" code="1010" description="an invalid index was passed" />
+		<error name="STREAMNOTACTIVE" code="1011" description="the data stream of the pyrometer is not active" />
+		<error name="MEASUREMENTOVERFLOW" code="1012" description="the measured temperature is out of the measurable range" />
+	</errors>
+
+	<enum name="SensorthermStreamMode">
+		<option name="Continuous" value="0"/>
+		<option name="ControllerSampled" value="1"/>
+	</enum>
+
+<!--
+
+This base Driver interface MUST be in Sync with LibMCDriver.xml
+
+-->
+	<class name="Base">
+	</class>
+
+	
+	<class name="Driver" parent="Base" description="An abstract Machine Control Driver">
+
+		<method name="Configure" description = "Configures a driver with its specific configuration data.">
+			<param name="ConfigurationString" type="string" pass="in" description="Configuration data of driver." />
+		</method>
+	
+		<method name="GetName" description = "returns the name identifier of the driver">
+			<param name="Name" type="string" pass="return" description="Name of the driver." />
+		</method>
+
+		<method name="GetType" description = "returns the type identifier of the driver">
+			<param name="Type" type="string" pass="return" description="Type of the driver." />
+		</method>
+
+		<method name="GetVersion" description = "returns the version identifiers of the driver">
+			<param name="Major" type="uint32" pass="out" description="Major version." />
+			<param name="Minor" type="uint32" pass="out" description="Minor version." />
+			<param name="Micro" type="uint32" pass="out" description="Micro version." />
+			<param name="Build" type="string" pass="out" description="Build identifier." />
+		</method>
+				
+		<method name="QueryParameters" description = "Updates the driver parameters in the driver environment. Should only be called in the driver thread.">
+		</method>
+		
+		<method name="QueryParametersEx" description = "Updates the driver parameters in the driver environment. Might be called out of thread. Implementation MUST be able to handle parallel calls.">
+			<param name="DriverUpdateInstance" type="class" class="LibMCEnv:DriverStatusUpdateSession" pass="in" description="Status update instance." />
+		</method>
+	
+	</class>
+
+<!--
+
+End Interface
+
+-->
+
+
+<!--
+
+Custom implementation
+
+-->
+
+	<class name="SensorthermPyrometer" description="A connection to a Sensortherm H4 series pyrometer">
+
+		<method name="Disconnect" description="Disconnects the pyrometer connection. No further call can be handled after.">
+		</method>
+
+		<method name="GetIdentifier" description="Returns the connection identifier.">
+			<param name="Identifier" type="string" pass="return" description="Identifier of the connection." />
+		</method>
+
+		<method name="GetIPAddress" description="Returns the IP address of the pyrometer.">
+			<param name="IPAddress" type="string" pass="return" description="IP address of the pyrometer." />
+		</method>
+
+		<method name="GetCommandPort" description="Returns the TCP port the pyrometer commands are sent to.">
+			<param name="Port" type="uint32" pass="return" description="Command port of the pyrometer." />
+		</method>
+
+		<method name="GetStreamPort" description="Returns the TCP port the pyrometer streams its measurement data to.">
+			<param name="Port" type="uint32" pass="return" description="Data stream port of the pyrometer." />
+		</method>
+
+		<method name="IsConnected" description="Checks if the pyrometer connection is alive.">
+			<param name="Connected" type="bool" pass="return" description="True, if the pyrometer is connected." />
+		</method>
+
+		<method name="SendCommand" description="Sends a raw command to the pyrometer. The device address is automatically prefixed, and the carriage return terminator is added by the driver.">
+			<param name="Command" type="string" pass="in" description="Command string to send, without device address and without terminator." />
+			<param name="Response" type="string" pass="return" description="Answer of the pyrometer, without the carriage return terminator. Empty for write only commands." />
+		</method>
+
+		<method name="PollSample" description="Actively requests one measurement packet from the pyrometer over the command connection (buffer poll). Returns true if a valid sample was received.">
+			<param name="Received" type="bool" pass="return" description="True, if a measurement sample could be received." />
+		</method>
+
+		<method name="UpdateStream" description="Reads all pending packets from the data stream connection and keeps the newest sample. Does not block longer than the configured timeout.">
+			<param name="Received" type="bool" pass="return" description="True, if at least one new packet could be read." />
+		</method>
+
+		<method name="StartStreaming" description="Selects the configured stream mode on the device and starts the IP data stream.">
+		</method>
+
+		<method name="StopStreaming" description="Stops the IP data stream of the pyrometer.">
+		</method>
+
+		<method name="IsStreaming" description="Checks if the IP data stream is currently active.">
+			<param name="Streaming" type="bool" pass="return" description="True, if the data stream is active." />
+		</method>
+
+		<method name="GetStreamMode" description="Returns the stream mode used when starting the data stream.">
+			<param name="StreamMode" type="enum" class="SensorthermStreamMode" pass="return" description="Stream mode in use." />
+		</method>
+
+		<method name="SetStreamMode" description="Sets the stream mode used when starting the data stream.">
+			<param name="StreamMode" type="enum" class="SensorthermStreamMode" pass="in" description="Stream mode to use." />
+		</method>
+
+		<method name="GetTwoColorTemperature" description="Returns the two color (quotient) temperature of the latest sample in degree Celsius.">
+			<param name="Temperature" type="double" pass="return" description="Two color temperature in degree Celsius." />
+		</method>
+
+		<method name="GetChannel1Temperature" description="Returns the temperature of channel 1 of the latest sample in degree Celsius.">
+			<param name="Temperature" type="double" pass="return" description="Channel 1 temperature in degree Celsius." />
+		</method>
+
+		<method name="GetChannel2Temperature" description="Returns the temperature of channel 2 of the latest sample in degree Celsius.">
+			<param name="Temperature" type="double" pass="return" description="Channel 2 temperature in degree Celsius." />
+		</method>
+
+		<method name="GetSignalStrength" description="Returns the signal strength of the latest sample in percent.">
+			<param name="SignalStrength" type="double" pass="return" description="Signal strength in percent." />
+		</method>
+
+		<method name="GetControlOutput" description="Returns the manipulated variable of the integrated controller of the latest sample in percent.">
+			<param name="ControlOutput" type="double" pass="return" description="Controller output in percent." />
+		</method>
+
+		<method name="GetSetpoint" description="Returns the controller setpoint of the latest sample in degree Celsius.">
+			<param name="Setpoint" type="double" pass="return" description="Controller setpoint in degree Celsius." />
+		</method>
+
+		<method name="GetSampleCount" description="Returns the number of measurement samples received since the connection was opened.">
+			<param name="SampleCount" type="int64" pass="return" description="Number of received samples." />
+		</method>
+
+		<method name="GetDeviceTimeStamp" description="Returns the device time stamp of the latest sample in milliseconds. The device time stamp wraps around after about 34 seconds.">
+			<param name="DeviceTimeStamp" type="int64" pass="return" description="Device time stamp of the latest sample in milliseconds." />
+		</method>
+
+		<method name="GetAgeInMilliseconds" description="Returns the age of the latest sample in milliseconds, measured on the machine host.">
+			<param name="Age" type="int64" pass="return" description="Age of the latest sample in milliseconds, or -1 if no sample was received yet." />
+		</method>
+
+		<method name="GetDigitalInput" description="Returns the state of a digital input of the latest sample.">
+			<param name="Index" type="uint32" pass="in" description="Input index (1 - 4)." />
+			<param name="State" type="bool" pass="return" description="State of the digital input." />
+		</method>
+
+		<method name="GetDigitalOutput" description="Returns the state of a digital output of the latest sample.">
+			<param name="Index" type="uint32" pass="in" description="Output index (1 - 4)." />
+			<param name="State" type="bool" pass="return" description="State of the digital output." />
+		</method>
+
+		<method name="IsControlActive" description="Returns true if the integrated controller is active in the latest sample.">
+			<param name="ControlActive" type="bool" pass="return" description="True, if the controller is active." />
+		</method>
+
+		<method name="IsFahrenheit" description="Returns true if the pyrometer reports its temperatures in Fahrenheit.">
+			<param name="Fahrenheit" type="bool" pass="return" description="True, if the device is configured for Fahrenheit." />
+		</method>
+
+		<method name="GetFaultStatus" description="Reads the fault status of the pyrometer (fs command).">
+			<param name="FaultStatus" type="uint32" pass="return" description="Fault status bit field." />
+		</method>
+
+		<method name="GetSerialNumber" description="Reads the serial number of the pyrometer (sn command).">
+			<param name="SerialNumber" type="string" pass="return" description="Serial number of the pyrometer." />
+		</method>
+
+		<method name="GetOrderNumber" description="Reads the order number of the pyrometer (bn command).">
+			<param name="OrderNumber" type="string" pass="return" description="Order number of the pyrometer." />
+		</method>
+
+		<method name="GetDeviceType" description="Reads the device type string of the pyrometer (ty command).">
+			<param name="DeviceType" type="string" pass="return" description="Device type of the pyrometer." />
+		</method>
+
+		<method name="GetEmissivity" description="Reads the emissivity of the pyrometer in percent (eg command).">
+			<param name="Emissivity" type="double" pass="return" description="Emissivity in percent." />
+		</method>
+
+		<method name="SetEmissivity" description="Sets the emissivity of the pyrometer in percent (eg command).">
+			<param name="Emissivity" type="double" pass="in" description="Emissivity in percent (5.0 - 120.0)." />
+		</method>
+
+	</class>
+
+	<class name="Driver_Sensortherm" parent="Driver" description="A Driver for Sensortherm H4 series pyrometers.">
+
+		<method name="Connect" description="Creates a connection to a Sensortherm pyrometer. The sockets are opened lazily, the first command triggers the connection.">
+			<param name="Identifier" type="string" pass="in" description="Identifier for the connection. Fails if identifier is already existing." />
+			<param name="IPAddress" type="string" pass="in" description="IP address of the pyrometer." />
+			<param name="CommandPort" type="uint32" pass="in" description="TCP command port of the pyrometer (device default: 1024)." />
+			<param name="StreamPort" type="uint32" pass="in" description="TCP data stream port of the pyrometer (device default: 1025)." />
+			<param name="DeviceAddress" type="string" pass="in" description="Two digit device address of the pyrometer ('00' unless the device was reassigned)." />
+			<param name="TimeOutInMs" type="uint32" pass="in" description="Timeout for command responses and stream reads in milliseconds." />
+			<param name="Pyrometer" type="class" class="SensorthermPyrometer" pass="return" description="Pyrometer connection instance." />
+		</method>
+
+		<method name="FindConnection" description="Finds a connection. Fails if the connection does not exist.">
+			<param name="Identifier" type="string" pass="in" description="Identifier for the connection." />
+			<param name="Pyrometer" type="class" class="SensorthermPyrometer" pass="return" description="Pyrometer connection instance." />
+		</method>
+
+		<method name="ConnectionExists" description="Checks if a connection exists with a certain identifier.">
+			<param name="Identifier" type="string" pass="in" description="Identifier for the connection." />
+			<param name="Exists" type="bool" pass="return" description="Returns true, if the connection exists, false otherwise." />
+		</method>
+
+		<method name="CloseAllConnections" description="Closes all connections.">
+		</method>
+
+	</class>
+
+
+<!--
+
+End of Custom implementation
+
+-->
+
+
+	<global baseclassname="Base" stringoutclassname="Base" releasemethod="ReleaseInstance" acquiremethod="AcquireInstance" versionmethod="GetVersion" errormethod="GetLastError" injectionmethod="InjectComponent" symbollookupmethod="GetSymbolLookupMethod">
+
+		<method name="GetVersion" description = "retrieves the binary version of this library.">
+			<param name="Major" type="uint32" pass="out" description="returns the major version of this library" />
+			<param name="Minor" type="uint32" pass="out" description="returns the minor version of this library" />
+			<param name="Micro" type="uint32" pass="out" description="returns the micro version of this library" />
+		</method>
+		<method name="GetLastError" description="Returns the last error recorded on this object">
+			<param name="Instance" type="class" class="Base" pass="in" description="Instance Handle" />
+			<param name="ErrorMessage" type="string" pass="out" description="Message of the last error" />
+			<param name="HasError" type="bool" pass="return" description="Is there a last error to query" />
+		</method>
+		<method name="ReleaseInstance" description="Releases shared ownership of an Instance">
+			<param name="Instance" type="class" class="Base" pass="in" description="Instance Handle" />
+		</method>
+		<method name="AcquireInstance" description="Acquires shared ownership of an Instance">
+			<param name="Instance" type="class" class="Base" pass="in" description="Instance Handle" />
+		</method>
+		<method name="InjectComponent" description="Injects an imported component for usage within this component">
+			<param name="NameSpace" type="string" pass="in" description="NameSpace of the injected component" />
+			<param name="SymbolAddressMethod" type="pointer" pass="in" description="Address of the SymbolAddressMethod of the injected component" />
+		</method>
+		<method name="GetSymbolLookupMethod" description="Returns the address of the SymbolLookupMethod">
+			<param name="SymbolLookupMethod" type="pointer" pass="return" description="Address of the SymbolAddressMethod" />
+		</method>
+		<method name="CreateDriver" description="Creates a driver instance with a specific name.">
+			<param name="Name" type="string" pass="in" description="Name of driver to be created." />
+			<param name="Type" type="string" pass="in" description="Type of driver to be created." />
+			<param name="DriverEnvironment" type="class" class="LibMCEnv:DriverEnvironment" pass="in" description="Environment of this driver." />
+			<param name="Instance" type="optionalclass" class="Driver" pass="return" description="New Driver instance" />
+		</method>
+
+	</global>
+
+</component>

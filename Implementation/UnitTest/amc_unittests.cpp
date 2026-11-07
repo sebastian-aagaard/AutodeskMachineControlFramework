@@ -62,6 +62,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_unittests_frontendsnapshot.hpp"
 #include "amc_unittests_eventstream.hpp"
 #include "amc_unittests_scanlab_jumpfilter.hpp"
+#include "amc_unittests_sensortherm_protocol.hpp"
 #include "amc_unittests_scanlab_powerramp.hpp"
 #include "amc_unittests_parquetwriter.hpp"
 
@@ -120,6 +121,7 @@ CUnitTests::CUnitTests (PUnitTestIO pIO)
 	registerTestGroup(std::make_shared <CUnitTestGroup_FrontendSnapshot>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_EventStream>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_ScanLab_JumpFilter>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_Sensortherm_Protocol>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_ScanLab_PowerRamp>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_ParquetWriter>());
 
