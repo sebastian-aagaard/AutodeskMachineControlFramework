@@ -63,6 +63,7 @@ import AMCApplicationModule_VideoStream from "../modules/AMCModule_VideoStream.j
 import AMCApplicationModule_Separator from "../modules/AMCModule_Separator.js"
 import AMCApplicationModule_StatusBanner from "../modules/AMCModule_StatusBanner.js"
 import AMCApplicationModule_Workflow from "../modules/AMCModule_Workflow.js"
+import AMCApplicationModule_OperationSequenceEditor from "../modules/AMCModule_OperationSequenceEditor.js"
 
 import { validateModuleJSON } from "./AMCModuleSchema.js"
 
@@ -74,6 +75,9 @@ import AMCApplicationDialog from "./AMCDialog.js"
 
 const CONFIG_REQUEST_TIMEOUT_MS = 2000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10000;
+// /upload/finish makes the server hash the whole stream, so its duration grows with the file size
+// (a large file can take more than 10 s on slow hardware). Like the chunk POSTs it runs without a timeout.
+const UPLOAD_FINISH_TIMEOUT_MS = 0;
 const MAX_CONSECUTIVE_FAILURES = 5;
 
 // Client reactivity metrics: aggregate /api/frontend roundtrips over this window
@@ -466,7 +470,8 @@ export default class AMCApplication extends Common.AMCObject {
 			(moduleType === "upload") || (moduleType === "buildlist") || (moduleType === "partlist") || (moduleType === "executionlist") ||
 			(moduleType === "alertlist") || (moduleType === "buttongroup") || (moduleType === "parameterlist") ||
 			(moduleType === "statuslist") || (moduleType === "togglepanel") ||
-			(moduleType === "configurationlist") || (moduleType === "form") || (moduleType === "workflow") || (moduleType === "statemachinegraph");
+			(moduleType === "configurationlist") || (moduleType === "form") || (moduleType === "workflow") || (moduleType === "statemachinegraph") ||
+			(moduleType === "operationsequenceeditor");
 	}
 
 	// Detect whether a JSON object uses the v2 frontend format.
@@ -845,6 +850,8 @@ export default class AMCApplication extends Common.AMCObject {
 			return new AMCApplicationModule_Workflow (page, def);
 		if (def.type === "statemachinegraph")
 			return new AMCApplicationModule_StateMachineGraph (page, def);
+		if (def.type === "operationsequenceeditor")
+			return new AMCApplicationModule_OperationSequenceEditor (page, def);
 
 		return null;
 		
@@ -1825,11 +1832,11 @@ export default class AMCApplication extends Common.AMCObject {
 					
 					uploadObject.setStateMessageToWaiting ();
 					
-                    application.axiosPostRequest("/upload/" + uploadObject.streamuuid + "/finish", {
+                    return application.axiosPostRequest("/upload/" + uploadObject.streamuuid + "/finish", {
                         "streamuuid": uploadObject.streamuuid,
 						"context": "build",
                         "sha256": checkSum
-                    })
+                    }, { timeout: UPLOAD_FINISH_TIMEOUT_MS })
                     .then(resultUploadFinish => {
 
 						uploadObject.clearUploadState ();
@@ -1879,7 +1886,7 @@ export default class AMCApplication extends Common.AMCObject {
 				}
 			})
             .catch(err => {
-                err;
+                uploadObject.failUpload (err);
             });
 		
 		
@@ -1914,7 +1921,7 @@ export default class AMCApplication extends Common.AMCObject {
 				
 			})
             .catch(err => {
-                err;
+                itemState.failUpload (err);
 /*                if (failureeventname)
                     this.triggerUIEvent(failureeventname, itemuuid, {}); */
             });
@@ -1955,11 +1962,11 @@ export default class AMCApplication extends Common.AMCObject {
 					
 					uploadObject.setStateMessageToWaiting ();
 					
-                    application.axiosPostRequest("/upload/finish", {
+                    return application.axiosPostRequest("/upload/finish", {
                         "streamuuid": uploadObject.streamuuid,
 						"context": "image",
                         "sha256": checkSum
-                    })
+                    }, { timeout: UPLOAD_FINISH_TIMEOUT_MS })
                     .then(resultUploadFinish => {
                         
 						uploadObject.clearUploadState ();
@@ -2010,7 +2017,7 @@ export default class AMCApplication extends Common.AMCObject {
 				}
 			})
             .catch(err => {
-                err;
+                uploadObject.failUpload (err);
             });
 		
 		
@@ -2047,7 +2054,7 @@ export default class AMCApplication extends Common.AMCObject {
 				
 			})
             .catch(err => {
-                err;
+                itemState.failUpload (err);
 /*                if (failureeventname)
                     this.triggerUIEvent(failureeventname, itemuuid, {}); */
             });

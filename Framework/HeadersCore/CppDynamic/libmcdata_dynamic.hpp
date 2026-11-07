@@ -90,6 +90,9 @@ class CLoginHandler;
 class CPersistencyHandler;
 class CUserPreferenceHandler;
 class CSessionMetricsHandler;
+class COperationSequenceRevision;
+class COperationSequenceRevisionIterator;
+class COperationSequenceStore;
 class CMachineConfigurationVersion;
 class CMachineConfigurationVersionIterator;
 class CMachineConfigurationXSD;
@@ -134,6 +137,9 @@ typedef CLoginHandler CLibMCDataLoginHandler;
 typedef CPersistencyHandler CLibMCDataPersistencyHandler;
 typedef CUserPreferenceHandler CLibMCDataUserPreferenceHandler;
 typedef CSessionMetricsHandler CLibMCDataSessionMetricsHandler;
+typedef COperationSequenceRevision CLibMCDataOperationSequenceRevision;
+typedef COperationSequenceRevisionIterator CLibMCDataOperationSequenceRevisionIterator;
+typedef COperationSequenceStore CLibMCDataOperationSequenceStore;
 typedef CMachineConfigurationVersion CLibMCDataMachineConfigurationVersion;
 typedef CMachineConfigurationVersionIterator CLibMCDataMachineConfigurationVersionIterator;
 typedef CMachineConfigurationXSD CLibMCDataMachineConfigurationXSD;
@@ -178,6 +184,9 @@ typedef std::shared_ptr<CLoginHandler> PLoginHandler;
 typedef std::shared_ptr<CPersistencyHandler> PPersistencyHandler;
 typedef std::shared_ptr<CUserPreferenceHandler> PUserPreferenceHandler;
 typedef std::shared_ptr<CSessionMetricsHandler> PSessionMetricsHandler;
+typedef std::shared_ptr<COperationSequenceRevision> POperationSequenceRevision;
+typedef std::shared_ptr<COperationSequenceRevisionIterator> POperationSequenceRevisionIterator;
+typedef std::shared_ptr<COperationSequenceStore> POperationSequenceStore;
 typedef std::shared_ptr<CMachineConfigurationVersion> PMachineConfigurationVersion;
 typedef std::shared_ptr<CMachineConfigurationVersionIterator> PMachineConfigurationVersionIterator;
 typedef std::shared_ptr<CMachineConfigurationXSD> PMachineConfigurationXSD;
@@ -222,6 +231,9 @@ typedef PLoginHandler PLibMCDataLoginHandler;
 typedef PPersistencyHandler PLibMCDataPersistencyHandler;
 typedef PUserPreferenceHandler PLibMCDataUserPreferenceHandler;
 typedef PSessionMetricsHandler PLibMCDataSessionMetricsHandler;
+typedef POperationSequenceRevision PLibMCDataOperationSequenceRevision;
+typedef POperationSequenceRevisionIterator PLibMCDataOperationSequenceRevisionIterator;
+typedef POperationSequenceStore PLibMCDataOperationSequenceStore;
 typedef PMachineConfigurationVersion PLibMCDataMachineConfigurationVersion;
 typedef PMachineConfigurationVersionIterator PLibMCDataMachineConfigurationVersionIterator;
 typedef PMachineConfigurationXSD PLibMCDataMachineConfigurationXSD;
@@ -691,6 +703,11 @@ public:
 			case LIBMCDATA_ERROR_JOBNAMETOOLONG: return "JOBNAMETOOLONG";
 			case LIBMCDATA_ERROR_STRINGPARAMETERTOOLONG: return "STRINGPARAMETERTOOLONG";
 			case LIBMCDATA_ERROR_TELEMETRYSETTINGAFTERINITIALISATION: return "TELEMETRYSETTINGAFTERINITIALISATION";
+			case LIBMCDATA_ERROR_INVALIDOPERATIONSEQUENCESTATEMACHINE: return "INVALIDOPERATIONSEQUENCESTATEMACHINE";
+			case LIBMCDATA_ERROR_INVALIDOPERATIONSEQUENCENAME: return "INVALIDOPERATIONSEQUENCENAME";
+			case LIBMCDATA_ERROR_INVALIDOPERATIONSEQUENCEREVISION: return "INVALIDOPERATIONSEQUENCEREVISION";
+			case LIBMCDATA_ERROR_OPERATIONSEQUENCEREVISIONEXISTS: return "OPERATIONSEQUENCEREVISIONEXISTS";
+			case LIBMCDATA_ERROR_OPERATIONSEQUENCEREVISIONNOTFOUND: return "OPERATIONSEQUENCEREVISIONNOTFOUND";
 		}
 		return "UNKNOWN";
 	}
@@ -1081,6 +1098,11 @@ public:
 			case LIBMCDATA_ERROR_JOBNAMETOOLONG: return "Job name exceeds maximum allowed length";
 			case LIBMCDATA_ERROR_STRINGPARAMETERTOOLONG: return "String parameter exceeds maximum allowed length";
 			case LIBMCDATA_ERROR_TELEMETRYSETTINGAFTERINITIALISATION: return "Telemetry setting changed after database initialisation";
+			case LIBMCDATA_ERROR_INVALIDOPERATIONSEQUENCESTATEMACHINE: return "Invalid operation sequence state machine name";
+			case LIBMCDATA_ERROR_INVALIDOPERATIONSEQUENCENAME: return "Invalid operation sequence name";
+			case LIBMCDATA_ERROR_INVALIDOPERATIONSEQUENCEREVISION: return "Invalid operation sequence revision";
+			case LIBMCDATA_ERROR_OPERATIONSEQUENCEREVISIONEXISTS: return "Operation sequence revision already exists";
+			case LIBMCDATA_ERROR_OPERATIONSEQUENCEREVISIONNOTFOUND: return "Operation sequence revision not found";
 		}
 		return "unknown error";
 	}
@@ -1229,6 +1251,9 @@ private:
 	friend class CPersistencyHandler;
 	friend class CUserPreferenceHandler;
 	friend class CSessionMetricsHandler;
+	friend class COperationSequenceRevision;
+	friend class COperationSequenceRevisionIterator;
+	friend class COperationSequenceStore;
 	friend class CMachineConfigurationVersion;
 	friend class CMachineConfigurationVersionIterator;
 	friend class CMachineConfigurationXSD;
@@ -1778,6 +1803,13 @@ public:
 	inline LibMCData_uint64 GetStartTimeStampInMicroseconds();
 	inline LibMCData_uint64 GetEndTimeStampInMicroseconds();
 	inline LibMCData_uint64 ComputeElapsedTimeInMicroseconds(const LibMCData_uint64 nGlobalTimerInMicroseconds, const bool bThrowExceptionInFailure);
+	inline eBuildJobExecutionStatus GetLoadedStatus();
+	inline std::string GetLoadedStatusString();
+	inline std::string GetLoadedDescription();
+	inline LibMCData_uint64 GetLoadedEndTimeStampInMicroseconds();
+	inline LibMCData_uint64 ComputeLoadedElapsedTimeInMicroseconds(const LibMCData_uint64 nGlobalTimerInMicroseconds, const bool bThrowExceptionInFailure);
+	inline bool JobHasThumbnailStream();
+	inline std::string GetJobThumbnailStreamUUID();
 	inline std::string AddJobExecutionData(const std::string & sIdentifier, const std::string & sName, classParam<CStorageStream> pStream, const eCustomDataType eDataType, const std::string & sUserUUID, const LibMCData_uint64 nAbsoluteTimeStamp);
 	inline PBuildJobExecutionDataIterator ListJobExecutionDataByType(const eCustomDataType eDataType);
 	inline PBuildJobExecutionDataIterator ListJobExecutionData();
@@ -2035,6 +2067,70 @@ public:
 };
 	
 /*************************************************************************************************************************
+ Class COperationSequenceRevision 
+**************************************************************************************************************************/
+class COperationSequenceRevision : public CBase {
+public:
+	
+	/**
+	* COperationSequenceRevision::COperationSequenceRevision - Constructor for OperationSequenceRevision class.
+	*/
+	COperationSequenceRevision(CWrapper* pWrapper, LibMCDataHandle pHandle)
+		: CBase(pWrapper, pHandle)
+	{
+	}
+	
+	inline std::string GetUUID();
+	inline std::string GetStateMachine();
+	inline std::string GetSequenceName();
+	inline LibMCData_uint32 GetRevision();
+	inline LibMCData_uint32 GetOrigin();
+	inline std::string GetContent();
+	inline std::string GetSHA256();
+	inline std::string GetUserUUID();
+	inline std::string GetTimestamp();
+};
+	
+/*************************************************************************************************************************
+ Class COperationSequenceRevisionIterator 
+**************************************************************************************************************************/
+class COperationSequenceRevisionIterator : public CIterator {
+public:
+	
+	/**
+	* COperationSequenceRevisionIterator::COperationSequenceRevisionIterator - Constructor for OperationSequenceRevisionIterator class.
+	*/
+	COperationSequenceRevisionIterator(CWrapper* pWrapper, LibMCDataHandle pHandle)
+		: CIterator(pWrapper, pHandle)
+	{
+	}
+	
+	inline POperationSequenceRevision GetCurrent();
+};
+	
+/*************************************************************************************************************************
+ Class COperationSequenceStore 
+**************************************************************************************************************************/
+class COperationSequenceStore : public CBase {
+public:
+	
+	/**
+	* COperationSequenceStore::COperationSequenceStore - Constructor for OperationSequenceStore class.
+	*/
+	COperationSequenceStore(CWrapper* pWrapper, LibMCDataHandle pHandle)
+		: CBase(pWrapper, pHandle)
+	{
+	}
+	
+	inline POperationSequenceRevision StoreRevision(const std::string & sUUID, const std::string & sStateMachine, const std::string & sSequenceName, const LibMCData_uint32 nRevision, const LibMCData_uint32 nOrigin, const std::string & sContent, const std::string & sUserUUID, const LibMCData_uint64 nAbsoluteTimeStamp);
+	inline LibMCData_uint32 GetLatestRevisionNumber(const std::string & sStateMachine, const std::string & sSequenceName);
+	inline POperationSequenceRevisionIterator ListLatestRevisions(const std::string & sStateMachine);
+	inline POperationSequenceRevisionIterator ListRevisions(const std::string & sStateMachine, const std::string & sSequenceName);
+	inline POperationSequenceRevision FindRevision(const std::string & sStateMachine, const std::string & sSequenceName, const LibMCData_uint32 nRevision);
+	inline POperationSequenceRevision FindRevisionByUUID(const std::string & sUUID);
+};
+	
+/*************************************************************************************************************************
  Class CMachineConfigurationVersion 
 **************************************************************************************************************************/
 class CMachineConfigurationVersion : public CBase {
@@ -2216,6 +2312,7 @@ public:
 	inline PPersistencyHandler CreatePersistencyHandler();
 	inline PUserPreferenceHandler CreateUserPreferenceHandler();
 	inline PSessionMetricsHandler CreateSessionMetricsHandler();
+	inline POperationSequenceStore CreateOperationSequenceStore();
 	inline void SetBaseTempDirectory(const std::string & sTempDirectory);
 	inline std::string GetBaseTempDirectory();
 	inline void SetLogCallback(const LogCallback pLogCallback, const LibMCData_pvoid pUserData);
@@ -2471,6 +2568,13 @@ public:
 		pWrapperTable->m_BuildJobExecution_GetStartTimeStampInMicroseconds = nullptr;
 		pWrapperTable->m_BuildJobExecution_GetEndTimeStampInMicroseconds = nullptr;
 		pWrapperTable->m_BuildJobExecution_ComputeElapsedTimeInMicroseconds = nullptr;
+		pWrapperTable->m_BuildJobExecution_GetLoadedStatus = nullptr;
+		pWrapperTable->m_BuildJobExecution_GetLoadedStatusString = nullptr;
+		pWrapperTable->m_BuildJobExecution_GetLoadedDescription = nullptr;
+		pWrapperTable->m_BuildJobExecution_GetLoadedEndTimeStampInMicroseconds = nullptr;
+		pWrapperTable->m_BuildJobExecution_ComputeLoadedElapsedTimeInMicroseconds = nullptr;
+		pWrapperTable->m_BuildJobExecution_JobHasThumbnailStream = nullptr;
+		pWrapperTable->m_BuildJobExecution_GetJobThumbnailStreamUUID = nullptr;
 		pWrapperTable->m_BuildJobExecution_AddJobExecutionData = nullptr;
 		pWrapperTable->m_BuildJobExecution_ListJobExecutionDataByType = nullptr;
 		pWrapperTable->m_BuildJobExecution_ListJobExecutionData = nullptr;
@@ -2581,6 +2685,22 @@ public:
 		pWrapperTable->m_UserPreferenceHandler_StoreUserPreference = nullptr;
 		pWrapperTable->m_UserPreferenceHandler_DeleteUserPreference = nullptr;
 		pWrapperTable->m_SessionMetricsHandler_AddFrontendMetrics = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetUUID = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetStateMachine = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetSequenceName = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetRevision = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetOrigin = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetContent = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetSHA256 = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetUserUUID = nullptr;
+		pWrapperTable->m_OperationSequenceRevision_GetTimestamp = nullptr;
+		pWrapperTable->m_OperationSequenceRevisionIterator_GetCurrent = nullptr;
+		pWrapperTable->m_OperationSequenceStore_StoreRevision = nullptr;
+		pWrapperTable->m_OperationSequenceStore_GetLatestRevisionNumber = nullptr;
+		pWrapperTable->m_OperationSequenceStore_ListLatestRevisions = nullptr;
+		pWrapperTable->m_OperationSequenceStore_ListRevisions = nullptr;
+		pWrapperTable->m_OperationSequenceStore_FindRevision = nullptr;
+		pWrapperTable->m_OperationSequenceStore_FindRevisionByUUID = nullptr;
 		pWrapperTable->m_MachineConfigurationVersion_GetVersionUUID = nullptr;
 		pWrapperTable->m_MachineConfigurationVersion_GetXSDUUID = nullptr;
 		pWrapperTable->m_MachineConfigurationVersion_GetNumericVersion = nullptr;
@@ -2637,6 +2757,7 @@ public:
 		pWrapperTable->m_DataModel_CreatePersistencyHandler = nullptr;
 		pWrapperTable->m_DataModel_CreateUserPreferenceHandler = nullptr;
 		pWrapperTable->m_DataModel_CreateSessionMetricsHandler = nullptr;
+		pWrapperTable->m_DataModel_CreateOperationSequenceStore = nullptr;
 		pWrapperTable->m_DataModel_SetBaseTempDirectory = nullptr;
 		pWrapperTable->m_DataModel_GetBaseTempDirectory = nullptr;
 		pWrapperTable->m_DataModel_SetLogCallback = nullptr;
@@ -4027,6 +4148,69 @@ public:
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_GetLoadedStatus = (PLibMCDataBuildJobExecution_GetLoadedStatusPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_getloadedstatus");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_GetLoadedStatus = (PLibMCDataBuildJobExecution_GetLoadedStatusPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_getloadedstatus");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_GetLoadedStatus == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_GetLoadedStatusString = (PLibMCDataBuildJobExecution_GetLoadedStatusStringPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_getloadedstatusstring");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_GetLoadedStatusString = (PLibMCDataBuildJobExecution_GetLoadedStatusStringPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_getloadedstatusstring");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_GetLoadedStatusString == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_GetLoadedDescription = (PLibMCDataBuildJobExecution_GetLoadedDescriptionPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_getloadeddescription");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_GetLoadedDescription = (PLibMCDataBuildJobExecution_GetLoadedDescriptionPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_getloadeddescription");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_GetLoadedDescription == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_GetLoadedEndTimeStampInMicroseconds = (PLibMCDataBuildJobExecution_GetLoadedEndTimeStampInMicrosecondsPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_getloadedendtimestampinmicroseconds");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_GetLoadedEndTimeStampInMicroseconds = (PLibMCDataBuildJobExecution_GetLoadedEndTimeStampInMicrosecondsPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_getloadedendtimestampinmicroseconds");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_GetLoadedEndTimeStampInMicroseconds == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_ComputeLoadedElapsedTimeInMicroseconds = (PLibMCDataBuildJobExecution_ComputeLoadedElapsedTimeInMicrosecondsPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_computeloadedelapsedtimeinmicroseconds");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_ComputeLoadedElapsedTimeInMicroseconds = (PLibMCDataBuildJobExecution_ComputeLoadedElapsedTimeInMicrosecondsPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_computeloadedelapsedtimeinmicroseconds");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_ComputeLoadedElapsedTimeInMicroseconds == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_JobHasThumbnailStream = (PLibMCDataBuildJobExecution_JobHasThumbnailStreamPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_jobhasthumbnailstream");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_JobHasThumbnailStream = (PLibMCDataBuildJobExecution_JobHasThumbnailStreamPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_jobhasthumbnailstream");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_JobHasThumbnailStream == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_GetJobThumbnailStreamUUID = (PLibMCDataBuildJobExecution_GetJobThumbnailStreamUUIDPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_getjobthumbnailstreamuuid");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_GetJobThumbnailStreamUUID = (PLibMCDataBuildJobExecution_GetJobThumbnailStreamUUIDPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_getjobthumbnailstreamuuid");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_GetJobThumbnailStreamUUID == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_BuildJobExecution_AddJobExecutionData = (PLibMCDataBuildJobExecution_AddJobExecutionDataPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_addjobexecutiondata");
 		#else // _WIN32
 		pWrapperTable->m_BuildJobExecution_AddJobExecutionData = (PLibMCDataBuildJobExecution_AddJobExecutionDataPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_addjobexecutiondata");
@@ -5017,6 +5201,150 @@ public:
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetUUID = (PLibMCDataOperationSequenceRevision_GetUUIDPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_getuuid");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetUUID = (PLibMCDataOperationSequenceRevision_GetUUIDPtr) dlsym(hLibrary, "libmcdata_operationsequencerevision_getuuid");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetUUID == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetStateMachine = (PLibMCDataOperationSequenceRevision_GetStateMachinePtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_getstatemachine");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetStateMachine = (PLibMCDataOperationSequenceRevision_GetStateMachinePtr) dlsym(hLibrary, "libmcdata_operationsequencerevision_getstatemachine");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetStateMachine == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetSequenceName = (PLibMCDataOperationSequenceRevision_GetSequenceNamePtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_getsequencename");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetSequenceName = (PLibMCDataOperationSequenceRevision_GetSequenceNamePtr) dlsym(hLibrary, "libmcdata_operationsequencerevision_getsequencename");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetSequenceName == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetRevision = (PLibMCDataOperationSequenceRevision_GetRevisionPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_getrevision");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetRevision = (PLibMCDataOperationSequenceRevision_GetRevisionPtr) dlsym(hLibrary, "libmcdata_operationsequencerevision_getrevision");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetRevision == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetOrigin = (PLibMCDataOperationSequenceRevision_GetOriginPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_getorigin");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetOrigin = (PLibMCDataOperationSequenceRevision_GetOriginPtr) dlsym(hLibrary, "libmcdata_operationsequencerevision_getorigin");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetOrigin == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetContent = (PLibMCDataOperationSequenceRevision_GetContentPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_getcontent");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetContent = (PLibMCDataOperationSequenceRevision_GetContentPtr) dlsym(hLibrary, "libmcdata_operationsequencerevision_getcontent");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetContent == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetSHA256 = (PLibMCDataOperationSequenceRevision_GetSHA256Ptr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_getsha256");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetSHA256 = (PLibMCDataOperationSequenceRevision_GetSHA256Ptr) dlsym(hLibrary, "libmcdata_operationsequencerevision_getsha256");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetSHA256 == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetUserUUID = (PLibMCDataOperationSequenceRevision_GetUserUUIDPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_getuseruuid");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetUserUUID = (PLibMCDataOperationSequenceRevision_GetUserUUIDPtr) dlsym(hLibrary, "libmcdata_operationsequencerevision_getuseruuid");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetUserUUID == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetTimestamp = (PLibMCDataOperationSequenceRevision_GetTimestampPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevision_gettimestamp");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevision_GetTimestamp = (PLibMCDataOperationSequenceRevision_GetTimestampPtr) dlsym(hLibrary, "libmcdata_operationsequencerevision_gettimestamp");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevision_GetTimestamp == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceRevisionIterator_GetCurrent = (PLibMCDataOperationSequenceRevisionIterator_GetCurrentPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencerevisioniterator_getcurrent");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceRevisionIterator_GetCurrent = (PLibMCDataOperationSequenceRevisionIterator_GetCurrentPtr) dlsym(hLibrary, "libmcdata_operationsequencerevisioniterator_getcurrent");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceRevisionIterator_GetCurrent == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceStore_StoreRevision = (PLibMCDataOperationSequenceStore_StoreRevisionPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencestore_storerevision");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceStore_StoreRevision = (PLibMCDataOperationSequenceStore_StoreRevisionPtr) dlsym(hLibrary, "libmcdata_operationsequencestore_storerevision");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceStore_StoreRevision == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceStore_GetLatestRevisionNumber = (PLibMCDataOperationSequenceStore_GetLatestRevisionNumberPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencestore_getlatestrevisionnumber");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceStore_GetLatestRevisionNumber = (PLibMCDataOperationSequenceStore_GetLatestRevisionNumberPtr) dlsym(hLibrary, "libmcdata_operationsequencestore_getlatestrevisionnumber");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceStore_GetLatestRevisionNumber == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceStore_ListLatestRevisions = (PLibMCDataOperationSequenceStore_ListLatestRevisionsPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencestore_listlatestrevisions");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceStore_ListLatestRevisions = (PLibMCDataOperationSequenceStore_ListLatestRevisionsPtr) dlsym(hLibrary, "libmcdata_operationsequencestore_listlatestrevisions");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceStore_ListLatestRevisions == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceStore_ListRevisions = (PLibMCDataOperationSequenceStore_ListRevisionsPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencestore_listrevisions");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceStore_ListRevisions = (PLibMCDataOperationSequenceStore_ListRevisionsPtr) dlsym(hLibrary, "libmcdata_operationsequencestore_listrevisions");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceStore_ListRevisions == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceStore_FindRevision = (PLibMCDataOperationSequenceStore_FindRevisionPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencestore_findrevision");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceStore_FindRevision = (PLibMCDataOperationSequenceStore_FindRevisionPtr) dlsym(hLibrary, "libmcdata_operationsequencestore_findrevision");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceStore_FindRevision == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OperationSequenceStore_FindRevisionByUUID = (PLibMCDataOperationSequenceStore_FindRevisionByUUIDPtr) GetProcAddress(hLibrary, "libmcdata_operationsequencestore_findrevisionbyuuid");
+		#else // _WIN32
+		pWrapperTable->m_OperationSequenceStore_FindRevisionByUUID = (PLibMCDataOperationSequenceStore_FindRevisionByUUIDPtr) dlsym(hLibrary, "libmcdata_operationsequencestore_findrevisionbyuuid");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OperationSequenceStore_FindRevisionByUUID == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_MachineConfigurationVersion_GetVersionUUID = (PLibMCDataMachineConfigurationVersion_GetVersionUUIDPtr) GetProcAddress(hLibrary, "libmcdata_machineconfigurationversion_getversionuuid");
 		#else // _WIN32
 		pWrapperTable->m_MachineConfigurationVersion_GetVersionUUID = (PLibMCDataMachineConfigurationVersion_GetVersionUUIDPtr) dlsym(hLibrary, "libmcdata_machineconfigurationversion_getversionuuid");
@@ -5518,6 +5846,15 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_DataModel_CreateSessionMetricsHandler == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_DataModel_CreateOperationSequenceStore = (PLibMCDataDataModel_CreateOperationSequenceStorePtr) GetProcAddress(hLibrary, "libmcdata_datamodel_createoperationsequencestore");
+		#else // _WIN32
+		pWrapperTable->m_DataModel_CreateOperationSequenceStore = (PLibMCDataDataModel_CreateOperationSequenceStorePtr) dlsym(hLibrary, "libmcdata_datamodel_createoperationsequencestore");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_DataModel_CreateOperationSequenceStore == nullptr)
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -6268,6 +6605,34 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_ComputeElapsedTimeInMicroseconds == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_getloadedstatus", (void**)&(pWrapperTable->m_BuildJobExecution_GetLoadedStatus));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_GetLoadedStatus == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_getloadedstatusstring", (void**)&(pWrapperTable->m_BuildJobExecution_GetLoadedStatusString));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_GetLoadedStatusString == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_getloadeddescription", (void**)&(pWrapperTable->m_BuildJobExecution_GetLoadedDescription));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_GetLoadedDescription == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_getloadedendtimestampinmicroseconds", (void**)&(pWrapperTable->m_BuildJobExecution_GetLoadedEndTimeStampInMicroseconds));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_GetLoadedEndTimeStampInMicroseconds == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_computeloadedelapsedtimeinmicroseconds", (void**)&(pWrapperTable->m_BuildJobExecution_ComputeLoadedElapsedTimeInMicroseconds));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_ComputeLoadedElapsedTimeInMicroseconds == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_jobhasthumbnailstream", (void**)&(pWrapperTable->m_BuildJobExecution_JobHasThumbnailStream));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_JobHasThumbnailStream == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_getjobthumbnailstreamuuid", (void**)&(pWrapperTable->m_BuildJobExecution_GetJobThumbnailStreamUUID));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_GetJobThumbnailStreamUUID == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcdata_buildjobexecution_addjobexecutiondata", (void**)&(pWrapperTable->m_BuildJobExecution_AddJobExecutionData));
 		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_AddJobExecutionData == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -6708,6 +7073,70 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_SessionMetricsHandler_AddFrontendMetrics == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_getuuid", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetUUID));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetUUID == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_getstatemachine", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetStateMachine));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetStateMachine == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_getsequencename", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetSequenceName));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetSequenceName == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_getrevision", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetRevision));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetRevision == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_getorigin", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetOrigin));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetOrigin == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_getcontent", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetContent));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetContent == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_getsha256", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetSHA256));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetSHA256 == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_getuseruuid", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetUserUUID));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetUserUUID == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevision_gettimestamp", (void**)&(pWrapperTable->m_OperationSequenceRevision_GetTimestamp));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevision_GetTimestamp == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencerevisioniterator_getcurrent", (void**)&(pWrapperTable->m_OperationSequenceRevisionIterator_GetCurrent));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceRevisionIterator_GetCurrent == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencestore_storerevision", (void**)&(pWrapperTable->m_OperationSequenceStore_StoreRevision));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceStore_StoreRevision == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencestore_getlatestrevisionnumber", (void**)&(pWrapperTable->m_OperationSequenceStore_GetLatestRevisionNumber));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceStore_GetLatestRevisionNumber == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencestore_listlatestrevisions", (void**)&(pWrapperTable->m_OperationSequenceStore_ListLatestRevisions));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceStore_ListLatestRevisions == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencestore_listrevisions", (void**)&(pWrapperTable->m_OperationSequenceStore_ListRevisions));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceStore_ListRevisions == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencestore_findrevision", (void**)&(pWrapperTable->m_OperationSequenceStore_FindRevision));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceStore_FindRevision == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_operationsequencestore_findrevisionbyuuid", (void**)&(pWrapperTable->m_OperationSequenceStore_FindRevisionByUUID));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OperationSequenceStore_FindRevisionByUUID == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcdata_machineconfigurationversion_getversionuuid", (void**)&(pWrapperTable->m_MachineConfigurationVersion_GetVersionUUID));
 		if ( (eLookupError != 0) || (pWrapperTable->m_MachineConfigurationVersion_GetVersionUUID == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -6930,6 +7359,10 @@ public:
 		
 		eLookupError = (*pLookup)("libmcdata_datamodel_createsessionmetricshandler", (void**)&(pWrapperTable->m_DataModel_CreateSessionMetricsHandler));
 		if ( (eLookupError != 0) || (pWrapperTable->m_DataModel_CreateSessionMetricsHandler == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_datamodel_createoperationsequencestore", (void**)&(pWrapperTable->m_DataModel_CreateOperationSequenceStore));
+		if ( (eLookupError != 0) || (pWrapperTable->m_DataModel_CreateOperationSequenceStore == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmcdata_datamodel_setbasetempdirectory", (void**)&(pWrapperTable->m_DataModel_SetBaseTempDirectory));
@@ -9141,6 +9574,101 @@ public:
 	}
 	
 	/**
+	* CBuildJobExecution::GetLoadedStatus - returns the build job execution status as loaded when this instance was created (for example by ListJobExecutions). Does not query the database; use GetStatus for the current value.
+	* @return Status Value
+	*/
+	eBuildJobExecutionStatus CBuildJobExecution::GetLoadedStatus()
+	{
+		eBuildJobExecutionStatus resultExecutionStatus = (eBuildJobExecutionStatus) 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_GetLoadedStatus(m_pHandle, &resultExecutionStatus));
+		
+		return resultExecutionStatus;
+	}
+	
+	/**
+	* CBuildJobExecution::GetLoadedStatusString - returns the build job execution status as string, as loaded when this instance was created. Does not query the database; use GetStatusString for the current value.
+	* @return Status Value
+	*/
+	std::string CBuildJobExecution::GetLoadedStatusString()
+	{
+		LibMCData_uint32 bytesNeededExecutionStatus = 0;
+		LibMCData_uint32 bytesWrittenExecutionStatus = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_GetLoadedStatusString(m_pHandle, 0, &bytesNeededExecutionStatus, nullptr));
+		std::vector<char> bufferExecutionStatus(bytesNeededExecutionStatus);
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_GetLoadedStatusString(m_pHandle, bytesNeededExecutionStatus, &bytesWrittenExecutionStatus, &bufferExecutionStatus[0]));
+		
+		return std::string(&bufferExecutionStatus[0]);
+	}
+	
+	/**
+	* CBuildJobExecution::GetLoadedDescription - returns the build job execution description as loaded when this instance was created. Does not query the database; use GetDescription for the current value.
+	* @return Description at load time.
+	*/
+	std::string CBuildJobExecution::GetLoadedDescription()
+	{
+		LibMCData_uint32 bytesNeededDescription = 0;
+		LibMCData_uint32 bytesWrittenDescription = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_GetLoadedDescription(m_pHandle, 0, &bytesNeededDescription, nullptr));
+		std::vector<char> bufferDescription(bytesNeededDescription);
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_GetLoadedDescription(m_pHandle, bytesNeededDescription, &bytesWrittenDescription, &bufferDescription[0]));
+		
+		return std::string(&bufferDescription[0]);
+	}
+	
+	/**
+	* CBuildJobExecution::GetLoadedEndTimeStampInMicroseconds - Returns the end time stamp of the build execution as loaded when this instance was created. Loaded status MUST BE Finished or Failed. Does not query the database; use GetEndTimeStampInMicroseconds for the current value.
+	* @return TimeStamp when the build ended in Microseconds.
+	*/
+	LibMCData_uint64 CBuildJobExecution::GetLoadedEndTimeStampInMicroseconds()
+	{
+		LibMCData_uint64 resultTimeStampInMicroseconds = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_GetLoadedEndTimeStampInMicroseconds(m_pHandle, &resultTimeStampInMicroseconds));
+		
+		return resultTimeStampInMicroseconds;
+	}
+	
+	/**
+	* CBuildJobExecution::ComputeLoadedElapsedTimeInMicroseconds - Same as ComputeElapsedTimeInMicroseconds, but based on the status and end time stamp loaded when this instance was created. Does not query the database.
+	* @param[in] nGlobalTimerInMicroseconds - The current session global timer.
+	* @param[in] bThrowExceptionInFailure - If true, the method will throw exceptions in any error case. If false, it will just return 0 in any error case.
+	* @return Elapsed time in Microseconds.
+	*/
+	LibMCData_uint64 CBuildJobExecution::ComputeLoadedElapsedTimeInMicroseconds(const LibMCData_uint64 nGlobalTimerInMicroseconds, const bool bThrowExceptionInFailure)
+	{
+		LibMCData_uint64 resultElapsedTimeInMicroseconds = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_ComputeLoadedElapsedTimeInMicroseconds(m_pHandle, nGlobalTimerInMicroseconds, bThrowExceptionInFailure, &resultElapsedTimeInMicroseconds));
+		
+		return resultElapsedTimeInMicroseconds;
+	}
+	
+	/**
+	* CBuildJobExecution::JobHasThumbnailStream - returns if the parent build job had a thumbnail attached when this instance was loaded. Does not query the database.
+	* @return Returns true, if the parent build job has an attached thumbnail.
+	*/
+	bool CBuildJobExecution::JobHasThumbnailStream()
+	{
+		bool resultHasThumbnail = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_JobHasThumbnailStream(m_pHandle, &resultHasThumbnail));
+		
+		return resultHasThumbnail;
+	}
+	
+	/**
+	* CBuildJobExecution::GetJobThumbnailStreamUUID - returns the UUID of the thumbnail stream of the parent build job, as loaded when this instance was created. Does not query the database.
+	* @return Thumbnail UUID. 00000000-0000-0000-0000-000000000000, if no thumbnail is assigned or the parent build job does not exist.
+	*/
+	std::string CBuildJobExecution::GetJobThumbnailStreamUUID()
+	{
+		LibMCData_uint32 bytesNeededUUID = 0;
+		LibMCData_uint32 bytesWrittenUUID = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_GetJobThumbnailStreamUUID(m_pHandle, 0, &bytesNeededUUID, nullptr));
+		std::vector<char> bufferUUID(bytesNeededUUID);
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_GetJobThumbnailStreamUUID(m_pHandle, bytesNeededUUID, &bytesWrittenUUID, &bufferUUID[0]));
+		
+		return std::string(&bufferUUID[0]);
+	}
+	
+	/**
 	* CBuildJobExecution::AddJobExecutionData - Adds additional data to the Job Execution.
 	* @param[in] sIdentifier - Unique identifier for the job data.
 	* @param[in] sName - Name of the job data
@@ -10763,6 +11291,268 @@ public:
 	}
 	
 	/**
+	 * Method definitions for class COperationSequenceRevision
+	 */
+	
+	/**
+	* COperationSequenceRevision::GetUUID - Returns the UUID of the revision.
+	* @return Revision UUID.
+	*/
+	std::string COperationSequenceRevision::GetUUID()
+	{
+		LibMCData_uint32 bytesNeededUUID = 0;
+		LibMCData_uint32 bytesWrittenUUID = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetUUID(m_pHandle, 0, &bytesNeededUUID, nullptr));
+		std::vector<char> bufferUUID(bytesNeededUUID);
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetUUID(m_pHandle, bytesNeededUUID, &bytesWrittenUUID, &bufferUUID[0]));
+		
+		return std::string(&bufferUUID[0]);
+	}
+	
+	/**
+	* COperationSequenceRevision::GetStateMachine - Returns the state machine instance the sequence belongs to.
+	* @return State machine instance name.
+	*/
+	std::string COperationSequenceRevision::GetStateMachine()
+	{
+		LibMCData_uint32 bytesNeededStateMachine = 0;
+		LibMCData_uint32 bytesWrittenStateMachine = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetStateMachine(m_pHandle, 0, &bytesNeededStateMachine, nullptr));
+		std::vector<char> bufferStateMachine(bytesNeededStateMachine);
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetStateMachine(m_pHandle, bytesNeededStateMachine, &bytesWrittenStateMachine, &bufferStateMachine[0]));
+		
+		return std::string(&bufferStateMachine[0]);
+	}
+	
+	/**
+	* COperationSequenceRevision::GetSequenceName - Returns the sequence name.
+	* @return Sequence name.
+	*/
+	std::string COperationSequenceRevision::GetSequenceName()
+	{
+		LibMCData_uint32 bytesNeededSequenceName = 0;
+		LibMCData_uint32 bytesWrittenSequenceName = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetSequenceName(m_pHandle, 0, &bytesNeededSequenceName, nullptr));
+		std::vector<char> bufferSequenceName(bytesNeededSequenceName);
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetSequenceName(m_pHandle, bytesNeededSequenceName, &bytesWrittenSequenceName, &bufferSequenceName[0]));
+		
+		return std::string(&bufferSequenceName[0]);
+	}
+	
+	/**
+	* COperationSequenceRevision::GetRevision - Returns the revision number.
+	* @return Revision number, 1-based.
+	*/
+	LibMCData_uint32 COperationSequenceRevision::GetRevision()
+	{
+		LibMCData_uint32 resultRevision = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetRevision(m_pHandle, &resultRevision));
+		
+		return resultRevision;
+	}
+	
+	/**
+	* COperationSequenceRevision::GetOrigin - Returns the origin of the revision.
+	* @return Origin as integer value of LibMCEnv::eOperationSequenceOrigin.
+	*/
+	LibMCData_uint32 COperationSequenceRevision::GetOrigin()
+	{
+		LibMCData_uint32 resultOrigin = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetOrigin(m_pHandle, &resultOrigin));
+		
+		return resultOrigin;
+	}
+	
+	/**
+	* COperationSequenceRevision::GetContent - Returns the XML content of the revision.
+	* @return XML content in the operationsequence/2026/11 format.
+	*/
+	std::string COperationSequenceRevision::GetContent()
+	{
+		LibMCData_uint32 bytesNeededContent = 0;
+		LibMCData_uint32 bytesWrittenContent = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetContent(m_pHandle, 0, &bytesNeededContent, nullptr));
+		std::vector<char> bufferContent(bytesNeededContent);
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetContent(m_pHandle, bytesNeededContent, &bytesWrittenContent, &bufferContent[0]));
+		
+		return std::string(&bufferContent[0]);
+	}
+	
+	/**
+	* COperationSequenceRevision::GetSHA256 - Returns the SHA256 checksum of the content.
+	* @return SHA256 checksum.
+	*/
+	std::string COperationSequenceRevision::GetSHA256()
+	{
+		LibMCData_uint32 bytesNeededSHA256 = 0;
+		LibMCData_uint32 bytesWrittenSHA256 = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetSHA256(m_pHandle, 0, &bytesNeededSHA256, nullptr));
+		std::vector<char> bufferSHA256(bytesNeededSHA256);
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetSHA256(m_pHandle, bytesNeededSHA256, &bytesWrittenSHA256, &bufferSHA256[0]));
+		
+		return std::string(&bufferSHA256[0]);
+	}
+	
+	/**
+	* COperationSequenceRevision::GetUserUUID - Returns the user that published the revision.
+	* @return User UUID. Empty UUID if published by the system.
+	*/
+	std::string COperationSequenceRevision::GetUserUUID()
+	{
+		LibMCData_uint32 bytesNeededUserUUID = 0;
+		LibMCData_uint32 bytesWrittenUserUUID = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetUserUUID(m_pHandle, 0, &bytesNeededUserUUID, nullptr));
+		std::vector<char> bufferUserUUID(bytesNeededUserUUID);
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetUserUUID(m_pHandle, bytesNeededUserUUID, &bytesWrittenUserUUID, &bufferUserUUID[0]));
+		
+		return std::string(&bufferUserUUID[0]);
+	}
+	
+	/**
+	* COperationSequenceRevision::GetTimestamp - Returns the publish timestamp.
+	* @return ISO 8601 UTC timestamp.
+	*/
+	std::string COperationSequenceRevision::GetTimestamp()
+	{
+		LibMCData_uint32 bytesNeededTimestampUTC = 0;
+		LibMCData_uint32 bytesWrittenTimestampUTC = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetTimestamp(m_pHandle, 0, &bytesNeededTimestampUTC, nullptr));
+		std::vector<char> bufferTimestampUTC(bytesNeededTimestampUTC);
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevision_GetTimestamp(m_pHandle, bytesNeededTimestampUTC, &bytesWrittenTimestampUTC, &bufferTimestampUTC[0]));
+		
+		return std::string(&bufferTimestampUTC[0]);
+	}
+	
+	/**
+	 * Method definitions for class COperationSequenceRevisionIterator
+	 */
+	
+	/**
+	* COperationSequenceRevisionIterator::GetCurrent - Returns the current OperationSequenceRevision instance.
+	* @return Current revision.
+	*/
+	POperationSequenceRevision COperationSequenceRevisionIterator::GetCurrent()
+	{
+		LibMCDataHandle hInstance = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceRevisionIterator_GetCurrent(m_pHandle, &hInstance));
+		
+		if (!hInstance) {
+			CheckError(LIBMCDATA_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<COperationSequenceRevision>(m_pWrapper, hInstance);
+	}
+	
+	/**
+	 * Method definitions for class COperationSequenceStore
+	 */
+	
+	/**
+	* COperationSequenceStore::StoreRevision - Stores a new revision. Fails if the revision number already exists for the sequence.
+	* @param[in] sUUID - Revision UUID.
+	* @param[in] sStateMachine - State machine instance name. MUST NOT be empty.
+	* @param[in] sSequenceName - Sequence name. MUST NOT be empty.
+	* @param[in] nRevision - Revision number. MUST be larger than 0.
+	* @param[in] nOrigin - Origin as integer value of LibMCEnv::eOperationSequenceOrigin.
+	* @param[in] sContent - XML content.
+	* @param[in] sUserUUID - User UUID. Empty for the system.
+	* @param[in] nAbsoluteTimeStamp - Absolute Time Stamp in Microseconds since 1970.
+	* @return Stored revision.
+	*/
+	POperationSequenceRevision COperationSequenceStore::StoreRevision(const std::string & sUUID, const std::string & sStateMachine, const std::string & sSequenceName, const LibMCData_uint32 nRevision, const LibMCData_uint32 nOrigin, const std::string & sContent, const std::string & sUserUUID, const LibMCData_uint64 nAbsoluteTimeStamp)
+	{
+		LibMCDataHandle hInstance = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceStore_StoreRevision(m_pHandle, sUUID.c_str(), sStateMachine.c_str(), sSequenceName.c_str(), nRevision, nOrigin, sContent.c_str(), sUserUUID.c_str(), nAbsoluteTimeStamp, &hInstance));
+		
+		if (!hInstance) {
+			CheckError(LIBMCDATA_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<COperationSequenceRevision>(m_pWrapper, hInstance);
+	}
+	
+	/**
+	* COperationSequenceStore::GetLatestRevisionNumber - Returns the latest revision number of a sequence.
+	* @param[in] sStateMachine - State machine instance name.
+	* @param[in] sSequenceName - Sequence name.
+	* @return Latest revision, or 0 if nothing is stored.
+	*/
+	LibMCData_uint32 COperationSequenceStore::GetLatestRevisionNumber(const std::string & sStateMachine, const std::string & sSequenceName)
+	{
+		LibMCData_uint32 resultRevision = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceStore_GetLatestRevisionNumber(m_pHandle, sStateMachine.c_str(), sSequenceName.c_str(), &resultRevision));
+		
+		return resultRevision;
+	}
+	
+	/**
+	* COperationSequenceStore::ListLatestRevisions - Lists the latest revision of every sequence of a state machine, sorted by name.
+	* @param[in] sStateMachine - State machine instance name.
+	* @return Latest revisions.
+	*/
+	POperationSequenceRevisionIterator COperationSequenceStore::ListLatestRevisions(const std::string & sStateMachine)
+	{
+		LibMCDataHandle hIterator = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceStore_ListLatestRevisions(m_pHandle, sStateMachine.c_str(), &hIterator));
+		
+		if (!hIterator) {
+			CheckError(LIBMCDATA_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<COperationSequenceRevisionIterator>(m_pWrapper, hIterator);
+	}
+	
+	/**
+	* COperationSequenceStore::ListRevisions - Lists all revisions of a sequence, newest first.
+	* @param[in] sStateMachine - State machine instance name.
+	* @param[in] sSequenceName - Sequence name.
+	* @return Revisions.
+	*/
+	POperationSequenceRevisionIterator COperationSequenceStore::ListRevisions(const std::string & sStateMachine, const std::string & sSequenceName)
+	{
+		LibMCDataHandle hIterator = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceStore_ListRevisions(m_pHandle, sStateMachine.c_str(), sSequenceName.c_str(), &hIterator));
+		
+		if (!hIterator) {
+			CheckError(LIBMCDATA_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<COperationSequenceRevisionIterator>(m_pWrapper, hIterator);
+	}
+	
+	/**
+	* COperationSequenceStore::FindRevision - Returns a specific revision of a sequence.
+	* @param[in] sStateMachine - State machine instance name.
+	* @param[in] sSequenceName - Sequence name.
+	* @param[in] nRevision - Revision number.
+	* @return Revision, or null if not found.
+	*/
+	POperationSequenceRevision COperationSequenceStore::FindRevision(const std::string & sStateMachine, const std::string & sSequenceName, const LibMCData_uint32 nRevision)
+	{
+		LibMCDataHandle hInstance = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceStore_FindRevision(m_pHandle, sStateMachine.c_str(), sSequenceName.c_str(), nRevision, &hInstance));
+		
+		if (hInstance) {
+			return std::make_shared<COperationSequenceRevision>(m_pWrapper, hInstance);
+		} else {
+			return nullptr;
+		}
+	}
+	
+	/**
+	* COperationSequenceStore::FindRevisionByUUID - Returns a revision by its UUID.
+	* @param[in] sUUID - Revision UUID.
+	* @return Revision, or null if not found.
+	*/
+	POperationSequenceRevision COperationSequenceStore::FindRevisionByUUID(const std::string & sUUID)
+	{
+		LibMCDataHandle hInstance = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_OperationSequenceStore_FindRevisionByUUID(m_pHandle, sUUID.c_str(), &hInstance));
+		
+		if (hInstance) {
+			return std::make_shared<COperationSequenceRevision>(m_pWrapper, hInstance);
+		} else {
+			return nullptr;
+		}
+	}
+	
+	/**
 	 * Method definitions for class CMachineConfigurationVersion
 	 */
 	
@@ -11627,6 +12417,21 @@ public:
 			CheckError(LIBMCDATA_ERROR_INVALIDPARAM);
 		}
 		return std::make_shared<CSessionMetricsHandler>(m_pWrapper, hSessionMetricsHandler);
+	}
+	
+	/**
+	* CDataModel::CreateOperationSequenceStore - creates an operation sequence store instance.
+	* @return OperationSequenceStore instance.
+	*/
+	POperationSequenceStore CDataModel::CreateOperationSequenceStore()
+	{
+		LibMCDataHandle hOperationSequenceStore = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_DataModel_CreateOperationSequenceStore(m_pHandle, &hOperationSequenceStore));
+		
+		if (!hOperationSequenceStore) {
+			CheckError(LIBMCDATA_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<COperationSequenceStore>(m_pWrapper, hOperationSequenceStore);
 	}
 	
 	/**
