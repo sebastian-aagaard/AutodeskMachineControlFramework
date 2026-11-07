@@ -190,6 +190,22 @@
   background-color: #EAF0E7;                 /* pale green      */
   color: #152027;
 }
+/*
+ * Dark mode: the fixed light palette would glare against the dark chrome, so
+ * unselected items fall back to the themed surfaces instead (card background,
+ * subtle secondary hover). Selection stays dark green with white content in
+ * both themes. These rules are placed before the selected rules on purpose:
+ * '.dark .nav-item:hover' ties with '.nav-item.is-selected:hover' on
+ * specificity, and source order must keep selection winning.
+ */
+.dark .nav-item {
+  background-color: var(--card);
+  color: var(--card-foreground);
+}
+.dark .nav-item:hover {
+  background-color: var(--secondary);
+  color: var(--card-foreground);
+}
 .nav-item.is-selected,
 .nav-item.is-selected:hover {
   background-color: #4A7140;                 /* dark green      */
@@ -200,6 +216,11 @@
 .nav-item:focus-visible {
   outline: 2px solid #4A7140;
   outline-offset: -2px;
+}
+/* Dark green is hard to see on dark surfaces; use the bright brand green, a
+   small accent exactly like the website's dark sections do for focus. */
+.dark .nav-item:focus-visible {
+  outline-color: #9ADC67;
 }
 .nav-item.is-selected:focus-visible {
   outline-color: #FFFFFF;
