@@ -305,16 +305,16 @@
 							{#each menuItems as item (item.uuid)}
 								{@const active = isMenuActive(item)}
 								<button
-									class="flex items-start gap-3 px-4 py-3 text-left hover:bg-accent border-b border-border/50 transition-colors
-										{active ? 'bg-primary/5 border-l-[3px] border-l-primary' : ''}"
+									class="nav-item flex items-start gap-3 px-4 py-3 text-left border-b border-border/50 transition-colors
+										{active ? 'is-selected border-l-[3px]' : ''}"
 									onclick={() => menuClick(item)}
 								>
-									<div class="mt-0.5 shrink-0 {active ? 'text-primary' : 'text-muted-foreground'}">
+									<div class="mt-0.5 shrink-0">
 										<MdiIcon icon={item.icon} class="h-5 w-5" />
 									</div>
 									<div>
-										<div class="text-sm font-medium {active ? 'text-primary' : ''}">{item.caption}</div>
-										<div class="text-xs text-muted-foreground">{item.description || ''}</div>
+										<div class="text-sm font-medium">{item.caption}</div>
+										<div class="text-xs">{item.description || ''}</div>
 									</div>
 								</button>
 							{/each}
@@ -389,16 +389,16 @@
 						{#each menuItems as item (item.uuid)}
 							{@const active = isMenuActive(item)}
 							<button
-								class="flex items-start gap-3 px-4 py-3 text-left hover:bg-accent border-b border-border/50 transition-colors
-									{active ? 'bg-primary/5 border-l-[3px] border-l-primary' : ''}"
+								class="nav-item flex items-start gap-3 px-4 py-3 text-left border-b border-border/50 transition-colors
+									{active ? 'is-selected border-l-[3px]' : ''}"
 								onclick={() => menuClick(item)}
 							>
-								<div class="mt-0.5 shrink-0 {active ? 'text-primary' : 'text-muted-foreground'}">
+								<div class="mt-0.5 shrink-0">
 									<MdiIcon icon={item.icon} class="h-5 w-5" />
 								</div>
 								<div>
-									<div class="text-sm font-medium {active ? 'text-primary' : ''}">{item.caption}</div>
-									<div class="text-xs text-muted-foreground">{item.description || ''}</div>
+									<div class="text-sm font-medium">{item.caption}</div>
+									<div class="text-xs">{item.description || ''}</div>
 								</div>
 							</button>
 						{/each}

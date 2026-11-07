@@ -167,3 +167,41 @@
     @apply bg-background text-foreground font-sans;
   }
 }
+
+/*
+ * Sidebar navigation item states (Powderbed brand).
+ *
+ * Fixed brand values, intentionally decoupled from the config-driven theme
+ * variables so the bright accent (#9ADC67) stays reserved for small accents
+ * elsewhere and never appears as a sidebar selection/hover background.
+ *
+ * Declared outside Tailwind's cascade layers so these rules win over any
+ * generated utility regardless of emission order. Hover precedes selection so
+ * a selected item never falls back to the hover look (selection wins on equal
+ * specificity by source order, and is-selected:hover outranks plain :hover).
+ * The title and description keep their text sizes (text-sm / text-xs) and
+ * inherit this color, so the selected state is full-opacity white everywhere.
+ */
+.nav-item {
+  background-color: #FFFFFF;                 /* white           */
+  color: #152027;                            /* charcoal        */
+}
+.nav-item:hover {
+  background-color: #EAF0E7;                 /* pale green      */
+  color: #152027;
+}
+.nav-item.is-selected,
+.nav-item.is-selected:hover {
+  background-color: #4A7140;                 /* dark green      */
+  color: #FFFFFF;
+  border-left-color: #FFFFFF;
+}
+/* Keyboard focus: 2px inset outline, dark green on unselected, white on selected. */
+.nav-item:focus-visible {
+  outline: 2px solid #4A7140;
+  outline-offset: -2px;
+}
+.nav-item.is-selected:focus-visible {
+  outline-color: #FFFFFF;
+}
+
