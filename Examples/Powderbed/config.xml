@@ -849,6 +849,46 @@
 			</grid>
 		</page>
 
+		<!-- Live state machine view. The client builds each graph from the state machine structure
+		     reported by the "/setup" REST endpoint, and keeps the node the instance is currently in
+		     highlighted via the live "activestate" attribute of the statemachinegraph module.
+		     The "node" children only override the automatic left-to-right layout of the graph. -->
+		<page name="statemachines">
+			<grid name="smgrid" padding="6">
+				<column width="1" unit="free"/>
+
+				<row height="1" unit="free"/>
+				<row height="1" unit="free"/>
+
+				<content name="maingraph" title="Main State Machine" columnstart="1" rowstart="1" columnend="1" rowend="1" scrollbars="1">
+					<statemachinegraph name="maingraphview" statemachine="main">
+						<node state="waitforinit" x="40" y="260"/>
+						<node state="init" x="240" y="260"/>
+						<node state="idle" x="440" y="260"/>
+						<node state="initexecution" x="640" y="80"/>
+						<node state="singleexposure" x="640" y="440"/>
+						<node state="execution_waiting" x="840" y="80"/>
+						<node state="cancelexecution" x="840" y="300"/>
+						<node state="execution_exposing" x="1040" y="80"/>
+						<node state="finishexecution" x="1040" y="260"/>
+						<node state="fatalerror" x="1040" y="440"/>
+					</statemachinegraph>
+				</content>
+
+				<content name="lasergraph" title="Laser State Machine" columnstart="1" rowstart="2" columnend="1" rowend="2" scrollbars="1">
+					<statemachinegraph name="lasergraphview" statemachine="laser">
+						<node state="waitforinit" x="40" y="220"/>
+						<node state="init" x="240" y="220"/>
+						<node state="idle" x="440" y="220"/>
+						<node state="exposure" x="640" y="80"/>
+						<node state="laserpowerchange" x="640" y="360"/>
+						<node state="fatalerror" x="840" y="480"/>
+					</statemachinegraph>
+				</content>
+			</grid>
+		</page>
+
+
 		<page name="systemlog">
 			<logs name="systemlog" caption="Log Messages">
 			</logs>
@@ -865,6 +905,7 @@
 			<item id="buildprocess" icon="mdi-laser-pointer" caption="Execution" description="Monitor the remotely driven execution." targetpage="buildstatus"/>
 			<item id="buildhistory" icon="mdi-clock" permission="permission_view_builds" description="Browse past executions on this machine." caption="Build History" targetpage="buildhistory"/>
 			<item id="systemstatus" icon="mdi-view-dashboard" caption="System Status" description="Display current machine status." targetpage="systemstatus"/>
+			<item id="statemachines" icon="mdi-sitemap" caption="State Machines" description="Watch the live state machines of all machine subsystems." targetpage="statemachines"/>
 			<item id="processhistory" icon="mdi-chart-line" caption="Process History" description="Interactively browse recorded process parameter history." targetpage="processhistory"/>
 			<item id="machineconfig" icon="mdi-cog" caption="Machine Configuration" description="View, activate and edit the persistent machine configuration." targetpage="machineconfig"/>
 			<item id="systemlog" icon="mdi-file-document-outline" caption="System Logs" description="Browse and display stored system log files." targetpage="systemlog"/>
