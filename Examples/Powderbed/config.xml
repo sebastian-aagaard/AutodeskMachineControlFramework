@@ -374,7 +374,7 @@
 
 
 
-	<userinterface appname="Powderbed" copyright="2026 Autodesk Inc." mainpage="importbuildjob" library="plugin_userinterface">
+	<userinterface appname="Powderbed Core 1" copyright="2026 Autodesk Inc." mainpage="importbuildjob" library="plugin_userinterface">
 
 		<logo resource="ui_logo" aspectratio="5.7"/>
 
