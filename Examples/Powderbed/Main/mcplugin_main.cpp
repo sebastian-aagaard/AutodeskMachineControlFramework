@@ -495,6 +495,9 @@ public:
 
 		auto pExposureSignal = pStateEnvironment->PrepareSignal("laser", "signal_exposure");
 		pExposureSignal->SetString("jobuuid", sJobUUID);
+		// A single layer exposure runs outside of a build execution, so a scanner recording of it
+		// cannot be attached to one - the laser only stores it in journal/build storage.
+		pExposureSignal->SetString("executionuuid", "");
 		pExposureSignal->SetInteger("layerindex", nLayerIndex);
 		pExposureSignal->SetInteger("timeout", nExposureTimeOut);
 		pExposureSignal->Trigger();
@@ -801,6 +804,9 @@ public:
 
 		auto pExposureSignal = pStateEnvironment->PrepareSignal("laser", "signal_exposure");
 		pExposureSignal->SetString("jobuuid", sJobUUID);
+		// The laser stores the scanner recording of this layer with that build execution.
+		auto sExecutionUUID = pStateEnvironment->GetStringParameter("jobinfo", "executionuuid");
+		pExposureSignal->SetString("executionuuid", (sExecutionUUID == NOEXECUTION_UUID) ? "" : sExecutionUUID);
 		pExposureSignal->SetInteger("layerindex", nCurrentLayer);
 		pExposureSignal->SetInteger("timeout", nExposureTimeOut);
 		pExposureSignal->Trigger();
