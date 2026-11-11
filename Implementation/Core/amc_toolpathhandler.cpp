@@ -52,6 +52,8 @@ namespace AMC {
 
 	CToolpathEntity* CToolpathHandler::findToolpathEntity(const std::string& sStreamUUID, bool bFailIfNotExistent)
 	{
+		std::lock_guard<std::mutex> lockGuard(m_EntityMapMutex);
+
 		auto iIter = m_Entities.find(sStreamUUID);
 		if (iIter != m_Entities.end()) {
 			return iIter->second.get();
@@ -68,34 +70,64 @@ namespace AMC {
 		if (sStreamUUID.empty())
 			throw ELibMCCustomException(LIBMC_ERROR_INVALIDTOOLPATHSTREAMUUID, sStreamUUID);
 
-		auto pToolpathEntity = findToolpathEntity(sStreamUUID, false);
-		if (pToolpathEntity == nullptr) {
+		{
+			std::lock_guard<std::mutex> lockGuard(m_EntityMapMutex);
 
-			auto pStorage = m_pDataModel->CreateStorage();
-			auto pStorageStream = pStorage->RetrieveStream(sStreamUUID);
-
-			auto pNewToolpathEntity = std::make_shared<CToolpathEntity>(m_pDataModel, sStreamUUID, getLib3MFWrapper(), pStorageStream->GetName (), true, m_AttachmentRelationsToRead);
-			pNewToolpathEntity->IncRef();
-			m_Entities.insert(std::make_pair(sStreamUUID, pNewToolpathEntity));
-			return pNewToolpathEntity.get();
-
+			auto iIter = m_Entities.find(sStreamUUID);
+			if (iIter != m_Entities.end()) {
+				iIter->second->IncRef();
+				return iIter->second.get();
+			}
 		}
-		else {
-			pToolpathEntity->IncRef();
-			return pToolpathEntity;
+
+		auto pStorage = m_pDataModel->CreateStorage();
+		auto pStorageStream = pStorage->RetrieveStream(sStreamUUID);
+
+		auto pNewToolpathEntity = std::make_shared<CToolpathEntity>(m_pDataModel, sStreamUUID, getLib3MFWrapper(), pStorageStream->GetName (), true, m_AttachmentRelationsToRead);
+		pNewToolpathEntity->IncRef();
+
+		std::lock_guard<std::mutex> lockGuard(m_EntityMapMutex);
+
+		// Another thread may have loaded the same stream in the meantime; keep the existing entity.
+		auto iIter = m_Entities.find(sStreamUUID);
+		if (iIter != m_Entities.end()) {
+			iIter->second->IncRef();
+			return iIter->second.get();
 		}
+
+		m_Entities.insert(std::make_pair(sStreamUUID, pNewToolpathEntity));
+		return pNewToolpathEntity.get();
+	}
+
+	PToolpathEntity CToolpathHandler::acquireToolpathEntity(const std::string& sStreamUUID)
+	{
+		std::lock_guard<std::mutex> lockGuard(m_EntityMapMutex);
+
+		auto iIter = m_Entities.find(sStreamUUID);
+		if (iIter != m_Entities.end())
+			return iIter->second;
+
+		return nullptr;
 	}
 
 	void CToolpathHandler::unloadToolpathEntity(const std::string& sStreamUUID)
 	{
-		auto pToolpathEntity = findToolpathEntity(sStreamUUID, true);
+		std::lock_guard<std::mutex> lockGuard(m_EntityMapMutex);
+
+		auto iIter = m_Entities.find(sStreamUUID);
+		if (iIter == m_Entities.end())
+			throw ELibMCCustomException(LIBMC_ERROR_TOOLPATHENTITYNOTLOADED, sStreamUUID);
+
+		auto pToolpathEntity = iIter->second;
 		if (pToolpathEntity->DecRef())
-			m_Entities.erase(sStreamUUID);
+			m_Entities.erase(iIter);
 	}
 
 
 	void CToolpathHandler::unloadAllEntities()
 	{
+		std::lock_guard<std::mutex> lockGuard(m_EntityMapMutex);
+
 		m_Entities.clear();
 	}
 

@@ -54,6 +54,10 @@ namespace AMC {
 		
 		std::map<std::string, PToolpathEntity> m_Entities;
 
+		// Guards m_Entities against concurrent access from HTTP request threads (which may hold
+		// acquired entity pointers while an execution finishes and unloads all toolpathes).
+		std::mutex m_EntityMapMutex;
+
 		std::string m_sLib3MFPath;
 		Lib3MF::PWrapper m_pLib3MFWrapper;
 
@@ -77,6 +81,11 @@ namespace AMC {
 
 		CToolpathEntity * findToolpathEntity(const std::string & sStreamUUID, bool bFailIfNotExistent);
 		CToolpathEntity* loadToolpathEntity(const std::string& sStreamUUID);
+
+		// Returns a shared pointer to the loaded entity, keeping the entity alive for as long as
+		// the caller holds it, even if the entity is unloaded from the handler in the meantime.
+		// Returns nullptr if the entity is not currently loaded.
+		PToolpathEntity acquireToolpathEntity(const std::string& sStreamUUID);
 		
 		void unloadToolpathEntity (const std::string& sStreamUUID);
 		void unloadAllEntities();

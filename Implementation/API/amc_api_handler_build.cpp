@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_api_jsonrequest.hpp"
 
 #include "libmc_interfaceexception.hpp"
+#include "libmc_exceptiontypes.hpp"
 #include "libmcdata_dynamic.hpp"
 
 #include "amc_toolpathhandler.hpp"
@@ -247,9 +248,14 @@ void CAPIHandler_Build::handleToolpathRequest(CJSONWriter& writer, const uint8_t
 
 		auto pToolpathHandler = m_pSystemState->toolpathHandler();
 
-		auto pToolpath = pToolpathHandler->findToolpathEntity(sStreamUUID, false);
+		// Hold a shared reference for the duration of this request: the toolpath entity may be
+		// unloaded concurrently, for example when an execution finishes and unloads all toolpathes.
+		auto pToolpath = pToolpathHandler->acquireToolpathEntity(sStreamUUID);
 		if (pToolpath == nullptr) {
-			pToolpath = pToolpathHandler->loadToolpathEntity(sStreamUUID);
+			pToolpathHandler->loadToolpathEntity(sStreamUUID);
+			pToolpath = pToolpathHandler->acquireToolpathEntity(sStreamUUID);
+			if (pToolpath == nullptr)
+				throw ELibMCCustomException(LIBMC_ERROR_TOOLPATHENTITYNOTLOADED, sStreamUUID);
 		}
 
 		auto disabledParts = pToolpathHandler->getDisabledParts(sStreamUUID);
@@ -482,9 +488,14 @@ void CAPIHandler_Build::writeJobDetailsEx(CJSONWriter& writer, LibMCData::PBuild
 
 	auto pToolpathHandler = m_pSystemState->toolpathHandler();
 
-	auto pToolpath = pToolpathHandler->findToolpathEntity(sStreamUUID, false);
+	// Hold a shared reference for the duration of this request: the toolpath entity may be
+	// unloaded concurrently, for example when an execution finishes and unloads all toolpathes.
+	auto pToolpath = pToolpathHandler->acquireToolpathEntity(sStreamUUID);
 	if (pToolpath == nullptr) {
-		pToolpath = pToolpathHandler->loadToolpathEntity(sStreamUUID);
+		pToolpathHandler->loadToolpathEntity(sStreamUUID);
+		pToolpath = pToolpathHandler->acquireToolpathEntity(sStreamUUID);
+		if (pToolpath == nullptr)
+			throw ELibMCCustomException(LIBMC_ERROR_TOOLPATHENTITYNOTLOADED, sStreamUUID);
 	}
 
 	uint32_t nPartCount = pToolpath->getPartCount();
