@@ -305,7 +305,7 @@
 
 		<parametergroup name="powercalibration" description="Laser Power Calibration">
 			<parameter name="calibrationsetpoint0" description="0% laser power (W)" default="0" type="double"/>
-			<parameter name="calibrationsetpoint100" description="100% laser power (W)" default="200" type="double"/>
+			<parameter name="calibrationsetpoint100" description="100% laser power (W)" default="300" type="double"/>
 		</parametergroup> 
 
 
