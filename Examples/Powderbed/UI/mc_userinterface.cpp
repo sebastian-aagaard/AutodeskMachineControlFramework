@@ -1346,6 +1346,59 @@ public:
 };
 
 
+/*************************************************************************************************************************
+ Class declaration of CEvent_OnPowerMeasurementToggle
+
+ Toggle of the timed laser emission on the "Power Measurement" page: while no emission is running the
+ settings of the page form are sent as a start request to the laser state machine; while an emission is
+ running the same switch sends a stop request that ends it early.
+**************************************************************************************************************************/
+class CEvent_OnPowerMeasurementToggle : public virtual CEvent {
+
+public:
+
+	static std::string getEventName()
+	{
+		return "onpowermeasurementtoggle";
+	}
+
+	void Handle(LibMCEnv::PUIEnvironment pUIEnvironment) override
+	{
+		if (!pUIEnvironment->CheckPermission("permission_start_build")) {
+			pUIEnvironment->ShowHint("You are not allowed to start timed laser emissions.", 3000);
+			return;
+		}
+
+		// The switch reflects the live active state of the laser subsystem.
+		if (pUIEnvironment->GetMachineParameterAsBool("laser", "powermeasurement", "active")) {
+			auto pSignal = pUIEnvironment->PrepareSignal("laser", "signal_stoppowermeasurement");
+			pSignal->Trigger();
+			pSignal->WaitForHandling(1000);
+			pUIEnvironment->LogMessage("Timed laser emission stop requested.");
+			return;
+		}
+
+		const std::string sForm = "powermeasurement.pm_left.pmform.";
+
+		int64_t nDurationMS = pUIEnvironment->GetUIPropertyAsInteger(sForm + "durationms", "value");
+		double dPowerWatts = pUIEnvironment->GetUIPropertyAsDouble(sForm + "powerw", "value");
+		double dFrequencyKHz = pUIEnvironment->GetUIPropertyAsDouble(sForm + "frequencykhz", "value");
+		double dDutyPercent = pUIEnvironment->GetUIPropertyAsDouble(sForm + "dutycycle", "value");
+
+		auto pSignal = pUIEnvironment->PrepareSignal("laser", "signal_startpowermeasurement");
+		pSignal->SetInteger("durationms", nDurationMS);
+		pSignal->SetDouble("powerw", dPowerWatts);
+		pSignal->SetInteger("frequencyhz", (int64_t)std::llround(dFrequencyKHz * 1000.0));
+		pSignal->SetInteger("dutycyclecenti", (int64_t)std::llround(dDutyPercent * 100.0));
+		pSignal->Trigger();
+		pSignal->WaitForHandling(1000);
+
+		pUIEnvironment->LogMessage("Timed laser emission requested (" + std::to_string(nDurationMS) + " ms, " +
+			std::to_string(dPowerWatts) + " W, " + std::to_string(dFrequencyKHz) + " kHz, " + std::to_string(dDutyPercent) + " % duty).");
+	}
+};
+
+
 IEvent* CEventHandler::CreateEvent(const std::string& sEventName, LibMCEnv::PUIEnvironment pUIEnvironment)
 {
 	IEvent* pEventInstance = nullptr;
@@ -1414,6 +1467,8 @@ IEvent* CEventHandler::CreateEvent(const std::string& sEventName, LibMCEnv::PUIE
 	if (createEventInstanceByName<CEvent_OnScanRecordingLayerChange>(sEventName, pEventInstance))
 		return pEventInstance;
 	if (createEventInstanceByName<CEvent_OnCloseScanRecording>(sEventName, pEventInstance))
+		return pEventInstance;
+	if (createEventInstanceByName<CEvent_OnPowerMeasurementToggle>(sEventName, pEventInstance))
 		return pEventInstance;
 
 	throw ELibMCUIInterfaceException(LIBMCUI_ERROR_INVALIDEVENTNAME, "invalid event name: " + sEventName);

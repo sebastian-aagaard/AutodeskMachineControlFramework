@@ -319,7 +319,7 @@
 		</parametergroup>
 
 		<parametergroup name="lasersignaltiming" description="CO2 Laser Signal Timing">
-			<parameter name="laseronsignal" description="Laser On GPIO State" default="0" type="bool"/>
+			<parameter name="laseronsignal" description="Laser On GPIO State" default="1" type="bool"/>
 			<parameter name="enableleadtime" description="Wait after switching the laser enable pin on before a layer is drawn (in Milliseconds)" default="0" type="int"/>
 			<parameter name="pulsehalfperiod" description="Laser Pulse Half Period (in Microseconds)" default="25" type="double"/>
 			<parameter name="pulselength" description="Default Laser Pulse Length (in Microseconds)" default="5" type="double"/>
@@ -348,6 +348,19 @@
 			<parameter name="laserdigitalinput" description="Laser Digital Input (DI0-DI15)" default="0" type="int"/>
 		</parametergroup>
 
+		<!-- Timed manual laser emission for power measurements ("Power Measurement" page). The first four
+		     parameters mirror the settings of the last accepted start request so the UI form reflects them;
+		     active/remainingms/endtime drive the live display while the emission state is running. -->
+		<parametergroup name="powermeasurement" description="Timed Laser Emission (Power Measurement)">
+			<parameter name="durationms" description="Timed emission duration (in Milliseconds)" default="10000" type="int"/>
+			<parameter name="powerw" description="Timed emission laser power (in Watts)" default="100" type="double"/>
+			<parameter name="frequencyhz" description="Pulse modulation frequency (in Hertz)" default="20000" type="int"/>
+			<parameter name="dutycyclecenti" description="Pulse modulation duty cycle (in percent * 100)" default="1000" type="int"/>
+			<parameter name="active" description="The timed laser emission is currently running" default="0" type="bool"/>
+			<parameter name="remainingms" description="Remaining time of the running timed emission (in Milliseconds)" default="0" type="int"/>
+			<parameter name="endtime" description="Global timer tick when the running timed emission ends (in Milliseconds)" default="0" type="int"/>
+		</parametergroup>
+
 		<driverparametergroup name="sdkstate" description="Scanlab SDK State" driver="scanlab"/>
 
 		<!-- Recovery: raised from the UI to clear a fatal error and re-run initialisation. -->
@@ -368,6 +381,20 @@
 			<result name="success" type="bool"/>
 		</signaldefinition>
 
+		<!-- Timed laser emission for power measurements: the start request is accepted while the laser
+		     subsystem is idle and runs in its own state; the stop request ends a running emission early. -->
+		<signaldefinition name="signal_startpowermeasurement">
+			<parameter name="durationms" type="int"/>
+			<parameter name="powerw" type="double"/>
+			<parameter name="frequencyhz" type="int"/>
+			<parameter name="dutycyclecenti" type="int"/>
+			<result name="success" type="bool"/>
+		</signaldefinition>
+
+		<signaldefinition name="signal_stoppowermeasurement">
+			<result name="success" type="bool"/>
+		</signaldefinition>
+
 		<state name="waitforinit" repeatdelay="100">
 			<outstate target="waitforinit"/>
 			<outstate target="init"/>
@@ -381,6 +408,7 @@
 			<outstate target="idle"/>
 			<outstate target="exposure"/>
 			<outstate target="laserpowerchange"/>
+			<outstate target="powermeasurement"/>
 		</state>
 
 		<state name="exposure" repeatdelay="50">
@@ -388,6 +416,11 @@
 		</state>
 
 		<state name="laserpowerchange" repeatdelay="50">
+			<outstate target="idle"/>
+		</state>
+
+		<state name="powermeasurement" repeatdelay="50">
+			<outstate target="powermeasurement"/>
 			<outstate target="idle"/>
 		</state>
 		
@@ -942,8 +975,54 @@
 						<node state="idle" x="440" y="220"/>
 						<node state="exposure" x="640" y="80"/>
 						<node state="laserpowerchange" x="640" y="360"/>
+						<node state="powermeasurement" x="840" y="220"/>
 						<node state="fatalerror" x="840" y="480"/>
 					</statemachinegraph>
+				</content>
+			</grid>
+		</page>
+
+
+		<!-- Power measurement page: timed manual laser emission for power measurements. The toggle switch
+		     starts a timed emission with the settings below (laser enable pin high, pulse modulation via the
+		     RTC6 standby/laser pulse timing) and acts as the stop control while the emission is running. -->
+		<page name="powermeasurement">
+			<grid name="pmgrid" padding="8">
+				<column width="1" unit="free"/>
+				<column width="1" unit="free"/>
+
+				<row height="1" unit="free"/>
+
+				<content name="pm_left" columnstart="1" rowstart="1" columnend="1" rowend="1" cardstyle="elevated" scrollbars="1">
+					<statusbanner name="pm_banner"
+						sync:severity="if(laser.powermeasurement.active, 'warning', 'ok')"
+						sync:title="if(laser.powermeasurement.active, 'LASER EMITTING', 'Laser idle')"
+						sync:description="if(laser.powermeasurement.active, concat('Timed emission ends in ', fixed(laser.powermeasurement.remainingms / 1000, 1), ' s. Toggle the switch to stop early.'), 'Set duration, power and pulse modulation, then activate the emission switch.')"/>
+
+					<togglepanel name="pm_toggle" columns="1">
+						<toggle label="Laser emission (timed)" sync:source="laser.powermeasurement.active" event="onpowermeasurementtoggle" mode="onoff"/>
+					</togglepanel>
+
+					<form name="pmform">
+						<edit name="durationms" caption="Emission duration (ms)" minvalue="10" maxvalue="600000" sync:value="laser.powermeasurement.durationms"/>
+						<edit name="powerw" caption="Laser power (W)" minvalue="0" maxvalue="200" sync:value="laser.powermeasurement.powerw"/>
+						<edit name="frequencykhz" caption="Pulse frequency (kHz)" minvalue="0.001" maxvalue="500" sync:value="laser.powermeasurement.frequencyhz / 1000"/>
+						<edit name="dutycycle" caption="Duty cycle (%)" minvalue="0" maxvalue="100" sync:value="laser.powermeasurement.dutycyclecenti / 100"/>
+					</form>
+
+					<statuslist name="pm_status">
+						<row label="Laser enable pin" sync:source="laser.lasersignaltiming.laseronsignal" display="onoff"/>
+						<row label="Timed emission running" sync:source="laser.powermeasurement.active" display="onoff"/>
+						<row label="Remaining (ms)" sync:source="laser.powermeasurement.remainingms" display="number"/>
+					</statuslist>
+
+					<paragraph variant="subtext" text="The RTC6 laser enable pin is held high for the configured duration; the emission pulse train follows the pulse modulation settings (frequency and duty cycle), scaled by the power setting through the laser power calibration. The graphic shows the resulting pulse timing."/>
+				</content>
+
+				<content name="pm_graphic" columnstart="2" rowstart="1" columnend="2" rowend="1" cardstyle="elevated" scrollbars="1">
+					<image sync:resource="if(laser.powermeasurement.active, 'laser_emitting', 'laser_idle')" maxheight="360"/>
+					<paragraph variant="h2" sync:text="if(laser.powermeasurement.active, 'Emitting', 'Standby')"/>
+					<paragraph variant="subtext" sync:text="concat('Period: ', fixed(1000000000 / laser.powermeasurement.frequencyhz, 1), ' us   Pulse width: ', fixed(10000000 * laser.powermeasurement.dutycyclecenti / laser.powermeasurement.frequencyhz, 2), ' us')"/>
 				</content>
 			</grid>
 		</page>
@@ -963,6 +1042,7 @@
 		<menu>
 			<item id="buildlist" icon="mdi-folder" permission="permission_view_builds" description="Upload build files and start an execution." caption="Build Library" targetpage="importbuildjob"/>
 			<item id="buildprocess" icon="mdi-laser-pointer" caption="Execution" description="Monitor the remotely driven execution." targetpage="buildstatus"/>
+			<item id="powermeasurement" icon="mdi-power" caption="Power Measurement" description="Run timed laser emissions with pulse modulation for power measurements." targetpage="powermeasurement"/>
 			<item id="buildhistory" icon="mdi-clock" permission="permission_view_builds" description="Browse past executions on this machine." caption="Build History" targetpage="buildhistory"/>
 			<item id="systemstatus" icon="mdi-view-dashboard" caption="System Status" description="Display current machine status." targetpage="systemstatus"/>
 			<item id="statemachines" icon="mdi-sitemap" caption="State Machines" description="Watch the live state machines of all machine subsystems." targetpage="statemachines"/>

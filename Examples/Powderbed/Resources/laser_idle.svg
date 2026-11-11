@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <!-- Laser idle indicator: enable pin low, emission pulse train off. -->
+  <rect x="0" y="0" width="640" height="360" rx="12" fill="#111827"/>
+
+  <!-- laser head -->
+  <rect x="60" y="48" width="120" height="56" rx="8" fill="#374151" stroke="#4b5563" stroke-width="2"/>
+  <rect x="180" y="64" width="24" height="24" rx="4" fill="#1f2937" stroke="#4b5563" stroke-width="2"/>
+  <circle cx="204" cy="76" r="5" fill="#111827" stroke="#6b7280" stroke-width="2"/>
+  <text x="120" y="36" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#9ca3af">CO2 laser</text>
+
+  <!-- status badge -->
+  <rect x="452" y="48" width="140" height="40" rx="20" fill="#1f2937" stroke="#6b7280" stroke-width="2"/>
+  <circle cx="478" cy="68" r="8" fill="#6b7280"/>
+  <text x="496" y="74" font-family="sans-serif" font-size="16" fill="#9ca3af">IDLE</text>
+
+  <!-- timing diagram -->
+  <line x1="60" y1="200" x2="580" y2="200" stroke="#374151" stroke-width="1" stroke-dasharray="4 6"/>
+  <line x1="60" y1="280" x2="580" y2="280" stroke="#374151" stroke-width="1"/>
+  <polyline points="60,280 580,280" fill="none" stroke="#6b7280" stroke-width="4" stroke-linecap="round"/>
+
+  <text x="44" y="206" text-anchor="end" font-family="sans-serif" font-size="14" fill="#6b7280">ON</text>
+  <text x="44" y="286" text-anchor="end" font-family="sans-serif" font-size="14" fill="#6b7280">OFF</text>
+  <text x="320" y="330" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#6b7280">Laser enable low &#8211; no emission</text>
+</svg>

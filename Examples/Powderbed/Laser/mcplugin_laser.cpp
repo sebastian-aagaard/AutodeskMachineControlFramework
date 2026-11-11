@@ -462,6 +462,43 @@ public:
 
 
 /*************************************************************************************************************************
+ Ends a running timed laser emission: drops the laser enable pin and restores the configured pulse
+ modulation timing. Shared by the powermeasurement state and the fatal-error recovery, it is a no-op
+ while no timed emission is active.
+**************************************************************************************************************************/
+static void EndPowerMeasurementEmission(PPluginData pPluginData, LibMCEnv::PStateEnvironment pStateEnvironment)
+{
+	if (!pStateEnvironment->GetBoolParameter("powermeasurement", "active"))
+		return;
+
+	pStateEnvironment->SetBoolParameter("powermeasurement", "active", false);
+	pStateEnvironment->SetIntegerParameter("powermeasurement", "remainingms", 0);
+
+	std::string sCardType = pStateEnvironment->GetStringParameter("cardconfig", "cardtype");
+	if (sCardType == "scanlab") {
+		auto pLaserData = std::dynamic_pointer_cast<CLaserData>(pPluginData);
+		if (pLaserData != nullptr) {
+			auto pDriver = pLaserData->acquireScanLabDriver(pStateEnvironment);
+			if (!pDriver->IsSimulationMode()) {
+				auto pContext = pDriver->GetContext();
+
+				// Put the timings used for normal marking back onto the card.
+				pContext->SetStandbyInMicroSeconds(pStateEnvironment->GetDoubleParameter("lasersignaltiming", "standbyhalfperiod"),
+					pStateEnvironment->GetDoubleParameter("lasersignaltiming", "standbylength"));
+				pContext->SetLaserPulsesInMicroSeconds(pStateEnvironment->GetDoubleParameter("lasersignaltiming", "pulsehalfperiod"),
+					pStateEnvironment->GetDoubleParameter("lasersignaltiming", "pulselength"));
+
+				pContext->SetLaserPinOut(false, false);
+			}
+		}
+	}
+
+	pStateEnvironment->SetBoolParameter("lasersignaltiming", "laseronsignal", false);
+	pStateEnvironment->LogMessage("Timed laser emission finished.");
+}
+
+
+/*************************************************************************************************************************
  Class definition of CLaserState_Idle
 **************************************************************************************************************************/
 class CLaserState_Idle : public virtual CLaserState {
@@ -519,6 +556,19 @@ public:
 		auto pLaserOnOffSignal = pStateEnvironment->GetUnhandledSignal("signal_changelaseronoff");
 		if (pLaserOnOffSignal != nullptr) {
 			pStateEnvironment->SetNextState("laserpowerchange");
+		}
+
+		auto pStopPowerMeasurement = pStateEnvironment->ClaimSignalFromQueue("signal_stoppowermeasurement");
+		if (pStopPowerMeasurement != nullptr) {
+			// Nothing is emitting while idle: acknowledge so that the stop request does not linger in the queue.
+			pStopPowerMeasurement->SetBoolResult("success", true);
+			pStopPowerMeasurement->SignalHandled();
+		}
+
+		auto pPowerMeasurementSignal = pStateEnvironment->GetUnhandledSignal("signal_startpowermeasurement");
+		if ((pPowerMeasurementSignal != nullptr) && (pExposureSignal == nullptr) && (pLaserOnOffSignal == nullptr)) {
+			pStateEnvironment->StoreSignal("powermeasurementsignal", pPowerMeasurementSignal);
+			pStateEnvironment->SetNextState("powermeasurement");
 		}
 	}
 };
@@ -657,6 +707,150 @@ public:
 
 
 /*************************************************************************************************************************
+ Class definition of CLaserState_PowerMeasurement
+
+ Runs a timed manual laser emission for power measurements. On the first pass it applies the requested
+ pulse modulation to the card and raises the single laser enable pin (LaserOut1 via set_laser_pin_out);
+ with the modulation routed onto the LASER_ON pin (config_laser_signals, set up during laser
+ initialisation), the same pin is held high for the duration and carries the emission pulse train, so no
+ second pin is involved. Every pass then checks for an early stop request and updates the remaining-time
+ parameter until the timer expires, then drops the pin and returns to idle.
+**************************************************************************************************************************/
+class CLaserState_PowerMeasurement : public virtual CLaserState {
+public:
+	CLaserState_PowerMeasurement(const std::string& sStateName, PPluginData pPluginData)
+		: CLaserState(getStateName(), sStateName, pPluginData) {
+	}
+
+	static const std::string getStateName() {
+		return "powermeasurement";
+	}
+
+	void Execute(LibMCEnv::PStateEnvironment pStateEnvironment) override {
+		if (pStateEnvironment.get() == nullptr)
+			throw ELibMCPluginInterfaceException(LIBMCPLUGIN_ERROR_INVALIDPARAM);
+
+		pStateEnvironment->SetNextState("powermeasurement");
+
+		if (!pStateEnvironment->GetBoolParameter("powermeasurement", "active")) {
+			StartEmission(pStateEnvironment);
+			return;
+		}
+
+		auto pStopSignal = pStateEnvironment->ClaimSignalFromQueue("signal_stoppowermeasurement");
+		if (pStopSignal != nullptr) {
+			pStopSignal->SetBoolResult("success", true);
+			pStopSignal->SignalHandled();
+			pStateEnvironment->LogMessage("Timed laser emission stopped early by request.");
+			EndPowerMeasurementEmission(m_pPluginData, pStateEnvironment);
+			pStateEnvironment->SetNextState("idle");
+			return;
+		}
+
+		int64_t nRemaining = pStateEnvironment->GetIntegerParameter("powermeasurement", "endtime") -
+			(int64_t)pStateEnvironment->GetGlobalTimerInMilliseconds();
+
+		if (nRemaining <= 0) {
+			EndPowerMeasurementEmission(m_pPluginData, pStateEnvironment);
+			pStateEnvironment->SetNextState("idle");
+			return;
+		}
+
+		if (nRemaining > 1000)
+			pStateEnvironment->SetIntegerParameter("powermeasurement", "remainingms", nRemaining);
+
+		pStateEnvironment->Sleep((uint32_t)((nRemaining < 50) ? nRemaining : 50));
+	}
+
+private:
+
+	void StartEmission(LibMCEnv::PStateEnvironment pStateEnvironment) {
+		auto pSignalHandler = pStateEnvironment->RetrieveSignal("powermeasurementsignal");
+		if (pSignalHandler == nullptr)
+			throw std::runtime_error("could not find timed laser emission signal");
+
+		// Never emit manually while an automated build execution is driving the laser.
+		std::string sMainState = pStateEnvironment->GetMachineState("main");
+		if ((sMainState == "initexecution") || (sMainState == "singleexposure") || (sMainState == "execution_waiting") ||
+			(sMainState == "execution_exposing") || (sMainState == "finishexecution") || (sMainState == "cancelexecution")) {
+			pStateEnvironment->LogWarning("Timed laser emission refused: a build execution is running.");
+			pSignalHandler->SetBoolResult("success", false);
+			pSignalHandler->SignalHandled();
+			pStateEnvironment->SetNextState("idle");
+			return;
+		}
+
+		int64_t nDurationMS = pSignalHandler->GetInteger("durationms");
+		double dPowerWatts = pSignalHandler->GetDouble("powerw");
+		int64_t nFrequencyHz = pSignalHandler->GetInteger("frequencyhz");
+		int64_t nDutyCentiPercent = pSignalHandler->GetInteger("dutycyclecenti");
+
+		if (nDurationMS < 10) nDurationMS = 10;
+		if (nDurationMS > 600000) nDurationMS = 600000;
+		if (!(dPowerWatts >= 0.0)) dPowerWatts = 0.0;
+		if (nFrequencyHz < 1) nFrequencyHz = 1;
+		if (nFrequencyHz > 500000) nFrequencyHz = 500000;
+		if (nDutyCentiPercent < 0) nDutyCentiPercent = 0;
+		if (nDutyCentiPercent > 10000) nDutyCentiPercent = 10000;
+
+		pStateEnvironment->SetIntegerParameter("powermeasurement", "durationms", nDurationMS);
+		pStateEnvironment->SetDoubleParameter("powermeasurement", "powerw", dPowerWatts);
+		pStateEnvironment->SetIntegerParameter("powermeasurement", "frequencyhz", nFrequencyHz);
+		pStateEnvironment->SetIntegerParameter("powermeasurement", "dutycyclecenti", nDutyCentiPercent);
+
+		double dPeriodInMicroSeconds = 1000000.0 / (double)nFrequencyHz;
+
+		// The CO2 laser's power is pulse-width modulated: the power setting maps to a pulse width fraction
+		// through the calibration table, and the PWM duty cycle multiplies it. The result is written to the
+		// laser pulse timing, which the card emits (modulated) on the LASER_ON pin - see config_laser_signals.
+		double dPowerFraction = 1.0;
+		std::string sCardType = pStateEnvironment->GetStringParameter("cardconfig", "cardtype");
+		if (sCardType != "scanlab")
+			throw std::runtime_error("invalid scanner card type: " + sCardType);
+
+		auto pDriver = m_pPluginData->acquireScanLabDriver(pStateEnvironment);
+		if (!pDriver->IsSimulationMode()) {
+			dPowerFraction = pDriver->GetContext()->MapPowerWattsToPercent(dPowerWatts) / 100.0;
+		}
+		else {
+			double dMaxPower = pStateEnvironment->GetDoubleParameter("powercalibration", "calibrationsetpoint100");
+			dPowerFraction = (dMaxPower > 0.0) ? (dPowerWatts / dMaxPower) : 1.0;
+		}
+
+		if (dPowerFraction < 0.0) dPowerFraction = 0.0;
+		if (dPowerFraction > 1.0) dPowerFraction = 1.0;
+
+		double dPulseWidthInMicroSeconds = dPeriodInMicroSeconds * ((double)nDutyCentiPercent / 10000.0) * dPowerFraction;
+
+		pStateEnvironment->LogMessage("Timed laser emission: " + std::to_string(nDurationMS) + " ms, " +
+			std::to_string(dPowerWatts) + " W, " + std::to_string(nFrequencyHz) + " Hz, " +
+			std::to_string((double)nDutyCentiPercent / 100.0) + " % duty (period " + std::to_string(dPeriodInMicroSeconds) +
+			" us, pulse width " + std::to_string(dPulseWidthInMicroSeconds) + " us)");
+
+		if (!pDriver->IsSimulationMode()) {
+			auto pContext = pDriver->GetContext();
+			pContext->SetLaserPulsesInMicroSeconds(dPeriodInMicroSeconds * 0.5, dPulseWidthInMicroSeconds);
+
+			// A single pin arms the emission: while it is high the card emits the pulse modulation on it.
+			pContext->SetLaserPinOut(true, false);
+		}
+		else {
+			pStateEnvironment->LogMessage("Laser in simulation mode - no hardware emission");
+		}
+
+		pStateEnvironment->SetBoolParameter("lasersignaltiming", "laseronsignal", true);
+		pStateEnvironment->SetIntegerParameter("powermeasurement", "endtime",
+			(int64_t)pStateEnvironment->GetGlobalTimerInMilliseconds() + nDurationMS);
+		pStateEnvironment->SetIntegerParameter("powermeasurement", "remainingms", nDurationMS);
+		pStateEnvironment->SetBoolParameter("powermeasurement", "active", true);
+
+		pSignalHandler->SetBoolResult("success", true);
+		pSignalHandler->SignalHandled();
+	}
+};
+
+
+/*************************************************************************************************************************
  Class definition of CLaserState_FatalError
 **************************************************************************************************************************/
 class CLaserState_FatalError : public virtual CLaserState {
@@ -672,6 +866,19 @@ public:
 	void Execute(LibMCEnv::PStateEnvironment pStateEnvironment) override {
 		if (pStateEnvironment.get() == nullptr)
 			throw ELibMCPluginInterfaceException(LIBMCPLUGIN_ERROR_INVALIDPARAM);
+
+		// Safety: if the error hit while a timed emission was running, drop the laser enable pin
+		// before entering the recovery wait.
+		if (pStateEnvironment->GetBoolParameter("powermeasurement", "active")) {
+			try {
+				EndPowerMeasurementEmission(m_pPluginData, pStateEnvironment);
+			}
+			catch (std::exception& e) {
+				pStateEnvironment->LogWarning("Could not stop timed laser emission during error handling: " + std::string(e.what()));
+				pStateEnvironment->SetBoolParameter("powermeasurement", "active", false);
+				pStateEnvironment->SetIntegerParameter("powermeasurement", "remainingms", 0);
+			}
+		}
 
 		// Stay in the fatal-error state until an external recovery request is received, then
 		// go back to "waitforinit" so the machine re-runs its full initialisation sequence.
@@ -710,6 +917,8 @@ IState* CStateFactory::CreateState(const std::string& sStateName) {
 	if (createStateInstanceByName<CLaserState_Exposure>(sStateName, pStateInstance, m_pPluginData))
 		return pStateInstance;
 	if (createStateInstanceByName<CLaserState_LaserPowerChange>(sStateName, pStateInstance, m_pPluginData))
+		return pStateInstance;
+	if (createStateInstanceByName<CLaserState_PowerMeasurement>(sStateName, pStateInstance, m_pPluginData))
 		return pStateInstance;
 	if (createStateInstanceByName<CLaserState_FatalError>(sStateName, pStateInstance, m_pPluginData))
 		return pStateInstance;
