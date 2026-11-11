@@ -28,6 +28,10 @@ Abstract: This is the class declaration of CRTCContext
 #define RTC6_MIN_MAXLASERPOWER 0.1
 #define RTC6_MAX_MAXLASERPOWER 10000.0
 
+// config_laser_signals bit 0: modulate the LASER_ON pin with the laser pulses (set_laser_pulses),
+// gated with the laser-on state, so the LASER_ON line carries gate and PWM modulation together.
+#define RTC6_CONFIGLASERSIGNALS_LASERON_MODULATION (1 << 0)
+
 // Parent classes
 #include "libmcdriver_scanlab_base.hpp"
 #ifdef _MSC_VER
@@ -394,6 +398,8 @@ public:
 	void GetStandbyInMicroSeconds(LibMCDriver_ScanLab_double& dHalfPeriod, LibMCDriver_ScanLab_double& dPulseLength) override;
 
 	void writeLaserTimingsToCard();
+
+	void ConfigLaserSignals(const LibMCDriver_ScanLab_uint32 nConfig);
 
 	LibMCDriver_ScanLab_uint32 GetSerialNumber() override;
 

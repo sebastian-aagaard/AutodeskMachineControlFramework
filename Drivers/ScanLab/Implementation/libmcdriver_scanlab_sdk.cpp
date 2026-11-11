@@ -290,6 +290,7 @@ CScanLabSDK::CScanLabSDK(const std::string& sDLLNameUTF8)
 	this->ptr_n_micro_vector_rel_3d = (PScanLabPtr_n_micro_vector_rel_3d)_loadScanLabAddress(hLibrary, "n_micro_vector_rel_3d", false);
 	this->ptr_n_micro_vector_abs = (PScanLabPtr_n_micro_vector_abs)_loadScanLabAddress(hLibrary, "n_micro_vector_abs", false);
 	this->ptr_n_micro_vector_rel = (PScanLabPtr_n_micro_vector_rel)_loadScanLabAddress(hLibrary, "n_micro_vector_rel", false);
+	this->ptr_n_config_laser_signals = (PScanLabPtr_n_config_laser_signals)_loadScanLabAddress(hLibrary, "n_config_laser_signals", false);
 
 	this->ptr_n_get_error = (PScanLabPtr_n_get_error)_loadScanLabAddress(hLibrary, "n_get_error");
 	this->ptr_n_reset_error = (PScanLabPtr_n_reset_error)_loadScanLabAddress(hLibrary, "n_reset_error");
@@ -432,6 +433,7 @@ void CScanLabSDK::resetFunctionPtrs()
 	ptr_n_set_auto_laser_control = nullptr;
 	ptr_n_set_laser_pulses = nullptr;
 	ptr_n_set_standby = nullptr;
+	ptr_n_config_laser_signals = nullptr;
 	ptr_n_get_last_error = nullptr;
 	ptr_get_last_error = nullptr;
 	ptr_n_load_program_file = nullptr;
@@ -768,6 +770,17 @@ void CScanLabSDK::n_set_standby(uint32_t nCardNo, uint32_t nHalfPeriod, uint32_t
 		m_pLogJournal->logCall("n_set_standby", std::to_string(nCardNo) + ", " + std::to_string(nHalfPeriod) + ", " + std::to_string(nPulseLength));
 
 	ptr_n_set_standby(nCardNo, nHalfPeriod, nPulseLength);
+}
+
+void CScanLabSDK::n_config_laser_signals(uint32_t nCardNo, uint32_t nConfig)
+{
+	if (m_pLogJournal.get() != nullptr)
+		m_pLogJournal->logCall("n_config_laser_signals", std::to_string(nCardNo) + ", " + std::to_string(nConfig));
+
+	if (ptr_n_config_laser_signals == nullptr)
+		throw ELibMCDriver_ScanLabInterfaceException(LIBMCDRIVER_SCANLAB_ERROR_CALLNOTSUPPORTED, "n_config_laser_signals not supported in this version of the library");
+
+	ptr_n_config_laser_signals(nCardNo, nConfig);
 }
 
 uint32_t CScanLabSDK::n_get_last_error(uint32_t nCardNo)

@@ -434,8 +434,14 @@ void CDriver_ScanLab_RTC6::ConfigureLaserMode(const LibMCDriver_ScanLab::eLaserM
 			throw ELibMCDriver_ScanLabInterfaceException(LIBMCDRIVER_SCANLAB_ERROR_INVALIDCAST);
 
         pContextInstance->writeLaserTimingsToCard();
-        
-        //This is depreciated now and replaced by the above
+
+        // With pulse modulation as the power control port, route the modulation onto the LASER_ON pin
+        // (config_laser_signals bit 0): the pin carries the set_laser_pulses pulse train gated with the
+        // laser-on state, so one line acts as both the emission on/off gate and the PWM power modulation.
+        // For all other ports the laser signals are restored to the unmodulated default.
+        pContextInstance->ConfigLaserSignals((eLaserPort == LibMCDriver_ScanLab::eLaserPort::LaserPulseModulation) ? RTC6_CONFIGLASERSIGNALS_LASERON_MODULATION : 0);
+
+                //This is depreciated now and replaced by the above
         //m_pRTCContext->SetLaserPulsesInMicroSeconds(5, 5);
         //m_pRTCContext->SetStandbyInMicroSeconds(1, 1);
 

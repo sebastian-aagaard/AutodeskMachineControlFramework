@@ -92,6 +92,7 @@ namespace LibMCDriver_ScanLab {
 		typedef void(SCANLAB_CALLINGCONVENTION* PScanLabPtr_n_set_auto_laser_control) (uint32_t nCardNo, uint32_t nControl, uint32_t nValue, uint32_t nMode, uint32_t nMinValue, uint32_t nMaxValue);
 		typedef void(SCANLAB_CALLINGCONVENTION* PScanLabPtr_n_set_laser_pulses) (uint32_t nCardNo, uint32_t nHalfPeriod, uint32_t nPulseLength);
 		typedef void(SCANLAB_CALLINGCONVENTION* PScanLabPtr_n_set_standby) (uint32_t nCardNo, uint32_t nHalfPeriod, uint32_t nPulseLength);
+		typedef void(SCANLAB_CALLINGCONVENTION* PScanLabPtr_n_config_laser_signals) (uint32_t nCardNo, uint32_t nConfig);
 		typedef uint32_t(SCANLAB_CALLINGCONVENTION* PScanLabPtr_n_get_last_error) (uint32_t nCardNo);
 		typedef uint32_t(SCANLAB_CALLINGCONVENTION* PScanLabPtr_get_last_error) ();
 		typedef uint32_t(SCANLAB_CALLINGCONVENTION* PScanLabPtr_n_load_program_file) (uint32_t nCardNo, const char * pPath);
@@ -296,6 +297,7 @@ namespace LibMCDriver_ScanLab {
 			PScanLabPtr_n_set_auto_laser_control ptr_n_set_auto_laser_control = nullptr;
 			PScanLabPtr_n_set_laser_pulses ptr_n_set_laser_pulses = nullptr;
 			PScanLabPtr_n_set_standby ptr_n_set_standby = nullptr;
+			PScanLabPtr_n_config_laser_signals ptr_n_config_laser_signals = nullptr;
 			PScanLabPtr_n_get_last_error ptr_n_get_last_error = nullptr;
 			PScanLabPtr_get_last_error ptr_get_last_error = nullptr;
 			PScanLabPtr_n_load_program_file ptr_n_load_program_file = nullptr;
@@ -463,6 +465,7 @@ namespace LibMCDriver_ScanLab {
 			void n_set_auto_laser_control (uint32_t nCardNo, uint32_t nControl, uint32_t nValue, uint32_t nMode, uint32_t nMinValue, uint32_t nMaxValue);
 			void n_set_laser_pulses (uint32_t nCardNo, uint32_t nHalfPeriod, uint32_t nPulseLength);
 			void n_set_standby (uint32_t nCardNo, uint32_t nHalfPeriod, uint32_t nPulseLength);
+			void n_config_laser_signals (uint32_t nCardNo, uint32_t nConfig);
 			uint32_t n_get_last_error (uint32_t nCardNo);
 			uint32_t get_last_error ();
 			uint32_t n_load_program_file (uint32_t nCardNo, const char* pPath);
