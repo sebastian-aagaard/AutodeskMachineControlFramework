@@ -367,6 +367,23 @@
 			<parameter name="endtime" description="Global timer tick when the running timed emission ends (in Milliseconds)" default="0" type="int"/>
 		</parametergroup>
 
+		<!-- Direct LASER1 pulse modulation ("Power Measurement" page): continuous pulse-width modulation of the
+		     laser pulse modulation at an editable frequency and duty cycle, independent of the power calibration.
+		     frequencyhz/dutycyclecenti mirror the form fields; halfperiodcounts/pulselengthcounts are the values
+		     actually programmed into the card (1/64 us timer counts, RTC6 Standard compatibility mode), derived as
+		     half_period = round(64 MHz / (2 * frequency_hz)) and pulse_length = round(2 * half_period * duty).
+		     maxrunningms is the hard time limit after which a running modulation stops by itself. -->
+		<parametergroup name="lasermodulation" description="Direct Laser Pulse Modulation (Power Measurement)">
+			<parameter name="active" description="The direct laser pulse modulation is currently running" default="0" type="bool"/>
+			<parameter name="frequencyhz" description="Modulation frequency (in Hertz)" default="20000" type="int"/>
+			<parameter name="dutycyclecenti" description="Modulation duty cycle (in percent * 100)" default="5000" type="int"/>
+			<parameter name="halfperiodcounts" description="Programmed pulse half period (in 1/64 us timer counts)" default="1600" type="int"/>
+			<parameter name="pulselengthcounts" description="Programmed pulse length (in 1/64 us timer counts)" default="1600" type="int"/>
+			<parameter name="maxrunningms" description="Hard limit for a running modulation: the emission stops by itself after this long (in Milliseconds)" default="10000" type="int"/>
+			<parameter name="endtime" description="Global timer tick when the running modulation ends (in Milliseconds)" default="0" type="int"/>
+			<parameter name="remainingms" description="Remaining time of the running modulation (in Milliseconds)" default="0" type="int"/>
+		</parametergroup>
+
 		<driverparametergroup name="sdkstate" description="Scanlab SDK State" driver="scanlab"/>
 
 		<!-- Recovery: raised from the UI to clear a fatal error and re-run initialisation. -->
@@ -401,6 +418,27 @@
 			<result name="success" type="bool"/>
 		</signaldefinition>
 
+		<!-- Direct LASER1 pulse modulation ("Power Measurement" page). The start request begins a modulation run,
+		     the update request re-programs the pulse timings while a run is active so the frequency and duty cycle
+		     fields take effect immediately, and the stop request ends the run. All three are refused while a build
+		     execution drives the laser. -->
+		<signaldefinition name="signal_startlasermodulation">
+			<parameter name="frequencyhz" type="int"/>
+			<parameter name="dutycyclecenti" type="int"/>
+			<parameter name="maxrunningms" type="int"/>
+			<result name="success" type="bool"/>
+		</signaldefinition>
+
+		<signaldefinition name="signal_updatelasermodulation">
+			<parameter name="frequencyhz" type="int"/>
+			<parameter name="dutycyclecenti" type="int"/>
+			<result name="success" type="bool"/>
+		</signaldefinition>
+
+		<signaldefinition name="signal_stoplasermodulation">
+			<result name="success" type="bool"/>
+		</signaldefinition>
+
 		<state name="waitforinit" repeatdelay="100">
 			<outstate target="waitforinit"/>
 			<outstate target="init"/>
@@ -415,6 +453,7 @@
 			<outstate target="exposure"/>
 			<outstate target="laserpowerchange"/>
 			<outstate target="powermeasurement"/>
+			<outstate target="lasermodulation"/>
 		</state>
 
 		<state name="exposure" repeatdelay="50">
@@ -427,6 +466,13 @@
 
 		<state name="powermeasurement" repeatdelay="50">
 			<outstate target="powermeasurement"/>
+			<outstate target="idle"/>
+		</state>
+
+		<!-- Direct LASER1 pulse modulation: stays in this state while the modulation runs, so it can pick up
+		     live frequency/duty-cycle updates and the stop request, and ends by itself at its time limit. -->
+		<state name="lasermodulation" repeatdelay="50">
+			<outstate target="lasermodulation"/>
 			<outstate target="idle"/>
 		</state>
 		
@@ -985,6 +1031,7 @@
 						<node state="exposure" x="640" y="80"/>
 						<node state="laserpowerchange" x="640" y="360"/>
 						<node state="powermeasurement" x="840" y="220"/>
+						<node state="lasermodulation" x="1040" y="80"/>
 						<node state="fatalerror" x="840" y="480"/>
 					</statemachinegraph>
 				</content>
@@ -992,15 +1039,18 @@
 		</page>
 
 
-		<!-- Power measurement page: timed manual laser emission for power measurements. The toggle switch
-		     starts a timed emission with the settings below (laser enable pin high, pulse modulation via the
-		     RTC6 standby/laser pulse timing) and acts as the stop control while the emission is running. -->
+		<!-- Power measurement page: two manual emission controls. The switch above starts a timed emission with
+		     the settings of that card (laser enable pin high, pulse modulation via the RTC6 standby/laser pulse
+		     timing, power scaled by the calibration) and acts as its stop control. The switch below runs the same
+		     pulse train without a timer-bound duration: it drives the LASER_1 pin directly with an editable
+		     frequency and duty cycle, which can be changed while the modulation runs. -->
 		<page name="powermeasurement">
 			<grid name="pmgrid" padding="8">
 				<column width="1" unit="free"/>
 				<column width="1" unit="free"/>
 
-				<row height="1" unit="free"/>
+				<row height="3" unit="free"/>
+				<row height="2" unit="free"/>
 
 				<content name="pm_left" columnstart="1" rowstart="1" columnend="1" rowend="1" cardstyle="elevated" scrollbars="1">
 					<statusbanner name="pm_banner"
@@ -1033,6 +1083,41 @@
 					<paragraph variant="h2" sync:text="if(laser.powermeasurement.active, 'Emitting', 'Standby')"/>
 					<paragraph variant="subtext" sync:text="concat('Period: ', fixed(1000000000 / laser.powermeasurement.frequencyhz, 1), ' us   Pulse width: ', fixed(10000000 * laser.powermeasurement.dutycyclecenti / laser.powermeasurement.frequencyhz, 2), ' us')"/>
 				</content>
+
+				<!-- Direct LASER1 modulation: the switch below drives the LASER_1 pin directly with a fixed-rate
+				     pulse train, bypassing the power calibration above. Frequency and duty cycle are editable while
+				     the modulation runs: every accepted change is re-programmed on the card within one state cycle. -->
+				<content name="pm_mod" columnstart="1" rowstart="2" columnend="1" rowend="2" cardstyle="elevated" scrollbars="1">
+					<statusbanner name="pm_mod_banner"
+						sync:severity="if(laser.lasermodulation.active, 'warning', 'ok')"
+						sync:title="if(laser.lasermodulation.active, 'LASER1 MODULATED', 'Direct modulation idle')"
+						sync:description="if(laser.lasermodulation.active, concat('LASER1 emits until the time limit in ', fixed(laser.lasermodulation.remainingms / 1000, 1), ' s. Toggle the switch to stop, or edit frequency or duty cycle to re-programme the pulse train immediately.'), 'Set frequency, duty cycle and time limit, then activate the modulation switch. The duty cycle is electrical: it is not scaled by the laser power calibration.')"/>
+
+					<togglepanel name="pm_mod_toggle" columns="1">
+						<toggle label="LASER1 modulation (direct)" sync:source="laser.lasermodulation.active" event="onlasermodulationtoggle" mode="onoff"/>
+					</togglepanel>
+
+					<form name="pm_mod_form">
+						<edit name="modfrequencykhz" caption="Modulation frequency (kHz)" minvalue="1" maxvalue="500" sync:value="laser.lasermodulation.frequencyhz / 1000" changeevent="onlasermodulationchange"/>
+						<edit name="moddutycycle" caption="Duty cycle (%)" minvalue="0" maxvalue="100" sync:value="laser.lasermodulation.dutycyclecenti / 100" changeevent="onlasermodulationchange"/>
+						<edit name="modmaxrunnings" caption="Automatic stop after (s)" minvalue="1" maxvalue="300" sync:value="laser.lasermodulation.maxrunningms / 1000" changeevent="onlasermodulationchange"/>
+					</form>
+
+					<paragraph variant="subtext" text="Frequency and duty cycle take effect immediately while the modulation runs. The automatic stop always ends the emission; the switch stops it early. Standby pulses are disabled while the modulation runs so that a 0 % duty cycle leaves LASER1 inactive."/>
+				</content>
+
+				<content name="pm_mod_state" columnstart="2" rowstart="2" columnend="2" rowend="2" cardstyle="elevated" scrollbars="1">
+					<statuslist name="pm_mod_status">
+						<row label="Modulation running" sync:source="laser.lasermodulation.active" display="onoff"/>
+						<row label="Laser enable pin" sync:source="laser.lasersignaltiming.laseronsignal" display="onoff"/>
+						<row label="Half period (1/64 us counts)" sync:source="laser.lasermodulation.halfperiodcounts" display="number"/>
+						<row label="Pulse length (1/64 us counts)" sync:source="laser.lasermodulation.pulselengthcounts" display="number"/>
+						<row label="Remaining (ms)" sync:source="laser.lasermodulation.remainingms" display="number"/>
+					</statuslist>
+
+					<paragraph variant="subtext" sync:text="concat('Period: ', fixed(2 * laser.lasermodulation.halfperiodcounts / 64, 3), ' us   Pulse width: ', fixed(laser.lasermodulation.pulselengthcounts / 64, 3), ' us   Duty: ', fixed(laser.lasermodulation.dutycyclecenti / 100, 2), ' %')"/>
+					<paragraph variant="subtext" text="Counts are the values programmed into the card in 1/64 us increments (RTC6 Standard compatibility mode, 64 MHz timer): half period = round(64 MHz / (2 * frequency)), pulse length = round(2 * half period * duty)."/>
+				</content>
 			</grid>
 		</page>
 
@@ -1051,7 +1136,7 @@
 		<menu>
 			<item id="buildlist" icon="mdi-folder" permission="permission_view_builds" description="Upload build files and start an execution." caption="Build Library" targetpage="importbuildjob"/>
 			<item id="buildprocess" icon="mdi-laser-pointer" caption="Execution" description="Monitor the remotely driven execution." targetpage="buildstatus"/>
-			<item id="powermeasurement" icon="mdi-power" caption="Power Measurement" description="Run timed laser emissions with pulse modulation for power measurements." targetpage="powermeasurement"/>
+			<item id="powermeasurement" icon="mdi-power" caption="Power Measurement" description="Run timed laser emissions, or modulate LASER1 directly with an editable frequency and duty cycle." targetpage="powermeasurement"/>
 			<item id="buildhistory" icon="mdi-clock" permission="permission_view_builds" description="Browse past executions on this machine." caption="Build History" targetpage="buildhistory"/>
 			<item id="systemstatus" icon="mdi-view-dashboard" caption="System Status" description="Display current machine status." targetpage="systemstatus"/>
 			<item id="statemachines" icon="mdi-sitemap" caption="State Machines" description="Watch the live state machines of all machine subsystems." targetpage="statemachines"/>

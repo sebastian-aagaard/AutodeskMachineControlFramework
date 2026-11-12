@@ -1402,6 +1402,114 @@ public:
 };
 
 
+/*************************************************************************************************************************
+ Class declaration of CEvent_OnLaserModulationToggle
+
+ Toggle of the direct LASER1 modulation on the "Power Measurement" page: while no modulation is running, the
+ frequency, duty cycle and time limit of the page form are sent as a start request to the laser state machine;
+ while one is running, the same switch sends a stop request that ends the run early.
+**************************************************************************************************************************/
+#define LASERMODULATION_FORM "powermeasurement.pm_mod.pm_mod_form."
+
+class CEvent_OnLaserModulationToggle : public virtual CEvent {
+
+public:
+
+	static std::string getEventName()
+	{
+		return "onlasermodulationtoggle";
+	}
+
+	void Handle(LibMCEnv::PUIEnvironment pUIEnvironment) override
+	{
+		if (!pUIEnvironment->CheckPermission("permission_start_build")) {
+			pUIEnvironment->ShowHint("You are not allowed to modulate the laser directly.", 3000);
+			return;
+		}
+
+		// The switch reflects the live state of the modulation in the laser subsystem.
+		if (pUIEnvironment->GetMachineParameterAsBool("laser", "lasermodulation", "active")) {
+			auto pSignal = pUIEnvironment->PrepareSignal("laser", "signal_stoplasermodulation");
+			pSignal->Trigger();
+			pSignal->WaitForHandling(1000);
+			pUIEnvironment->LogMessage("Direct LASER1 modulation stop requested.");
+			return;
+		}
+
+		double dFrequencyKHz = pUIEnvironment->GetUIPropertyAsDouble(LASERMODULATION_FORM "modfrequencykhz", "value");
+		double dDutyPercent = pUIEnvironment->GetUIPropertyAsDouble(LASERMODULATION_FORM "moddutycycle", "value");
+		double dMaxRunningSeconds = pUIEnvironment->GetUIPropertyAsDouble(LASERMODULATION_FORM "modmaxrunnings", "value");
+
+		auto pSignal = pUIEnvironment->PrepareSignal("laser", "signal_startlasermodulation");
+		pSignal->SetInteger("frequencyhz", (int64_t)std::llround(dFrequencyKHz * 1000.0));
+		pSignal->SetInteger("dutycyclecenti", (int64_t)std::llround(dDutyPercent * 100.0));
+		pSignal->SetInteger("maxrunningms", (int64_t)std::llround(dMaxRunningSeconds * 1000.0));
+		pSignal->Trigger();
+		pSignal->WaitForHandling(1000);
+
+		if (!pSignal->GetBoolResult("success"))
+			pUIEnvironment->ShowHint("The laser subsystem refused the modulation request - see the system log.", 5000);
+
+		pUIEnvironment->LogMessage("Direct LASER1 modulation requested (" + std::to_string(dFrequencyKHz) + " kHz, " +
+			std::to_string(dDutyPercent) + " % duty, automatic stop after " + std::to_string(dMaxRunningSeconds) + " s).");
+	}
+};
+
+
+/*************************************************************************************************************************
+ Class declaration of CEvent_OnLaserModulationChange
+
+ Live edit of the direct modulation settings: an edit of the frequency or of the duty cycle re-programs the
+ running pulse train immediately. Only the sender's value is current during a change event, so the setting that
+ was not edited is read back from the laser subsystem, where the running modulation mirrors it.
+**************************************************************************************************************************/
+class CEvent_OnLaserModulationChange : public virtual CEvent {
+
+public:
+
+	static std::string getEventName()
+	{
+		return "onlasermodulationchange";
+	}
+
+	void Handle(LibMCEnv::PUIEnvironment pUIEnvironment) override
+	{
+		const std::string sSender = pUIEnvironment->RetrieveEventSender();
+
+		bool bIsFrequency = (sSender == LASERMODULATION_FORM "modfrequencykhz");
+		bool bIsDutyCycle = (sSender == LASERMODULATION_FORM "moddutycycle");
+
+		// The time limit only applies to the next start request, everything else needs no action while idle.
+		if (!bIsFrequency && !bIsDutyCycle)
+			return;
+		if (!pUIEnvironment->GetMachineParameterAsBool("laser", "lasermodulation", "active"))
+			return;
+
+		if (!pUIEnvironment->CheckPermission("permission_start_build")) {
+			pUIEnvironment->ShowHint("You are not allowed to change the running laser modulation.", 3000);
+			return;
+		}
+
+		int64_t nFrequencyHz = pUIEnvironment->GetMachineParameterAsInteger("laser", "lasermodulation", "frequencyhz");
+		int64_t nDutyCentiPercent = pUIEnvironment->GetMachineParameterAsInteger("laser", "lasermodulation", "dutycyclecenti");
+
+		if (bIsFrequency)
+			nFrequencyHz = (int64_t)std::llround(pUIEnvironment->GetUIPropertyAsDouble(sSender, "value") * 1000.0);
+		else
+			nDutyCentiPercent = (int64_t)std::llround(pUIEnvironment->GetUIPropertyAsDouble(sSender, "value") * 100.0);
+
+		auto pSignal = pUIEnvironment->PrepareSignal("laser", "signal_updatelasermodulation");
+		pSignal->SetInteger("frequencyhz", nFrequencyHz);
+		pSignal->SetInteger("dutycyclecenti", nDutyCentiPercent);
+		pSignal->Trigger();
+		pSignal->WaitForHandling(2000);
+
+		if (!pSignal->GetBoolResult("success"))
+			pUIEnvironment->ShowHint("That modulation setting was refused - see the system log.", 5000);
+	}
+};
+
+
 IEvent* CEventHandler::CreateEvent(const std::string& sEventName, LibMCEnv::PUIEnvironment pUIEnvironment)
 {
 	IEvent* pEventInstance = nullptr;
@@ -1472,6 +1580,10 @@ IEvent* CEventHandler::CreateEvent(const std::string& sEventName, LibMCEnv::PUIE
 	if (createEventInstanceByName<CEvent_OnCloseScanRecording>(sEventName, pEventInstance))
 		return pEventInstance;
 	if (createEventInstanceByName<CEvent_OnPowerMeasurementToggle>(sEventName, pEventInstance))
+		return pEventInstance;
+	if (createEventInstanceByName<CEvent_OnLaserModulationToggle>(sEventName, pEventInstance))
+		return pEventInstance;
+	if (createEventInstanceByName<CEvent_OnLaserModulationChange>(sEventName, pEventInstance))
 		return pEventInstance;
 
 	throw ELibMCUIInterfaceException(LIBMCUI_ERROR_INVALIDEVENTNAME, "invalid event name: " + sEventName);
