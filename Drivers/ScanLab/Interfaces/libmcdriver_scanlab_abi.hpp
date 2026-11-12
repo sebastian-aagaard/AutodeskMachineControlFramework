@@ -1669,6 +1669,24 @@ LIBMCDRIVER_SCANLAB_DECLSPEC LibMCDriver_ScanLabResult libmcdriver_scanlab_rtcco
 LIBMCDRIVER_SCANLAB_DECLSPEC LibMCDriver_ScanLabResult libmcdriver_scanlab_rtccontext_setlaserpinout(LibMCDriver_ScanLab_RTCContext pRTCContext, bool bLaserOut1, bool bLaserOut2);
 
 /**
+* Routes the laser signal outputs of the card (RTC6 command config_laser_signals). Control command, has immediate effect.
+*
+* @param[in] pRTCContext - RTCContext instance.
+* @param[in] nConfig - Laser signal configuration bitfield.
+* @return error code or 0 (success)
+*/
+LIBMCDRIVER_SCANLAB_DECLSPEC LibMCDriver_ScanLabResult libmcdriver_scanlab_rtccontext_configlasersignals(LibMCDriver_ScanLab_RTCContext pRTCContext, LibMCDriver_ScanLab_uint32 nConfig);
+
+/**
+* Asserts or releases the laser signal of the card (RTC6 commands laser_signal_on/laser_signal_off). Control command, has immediate effect.
+*
+* @param[in] pRTCContext - RTCContext instance.
+* @param[in] bLaserOn - True asserts the laser signal, false releases it.
+* @return error code or 0 (success)
+*/
+LIBMCDRIVER_SCANLAB_DECLSPEC LibMCDriver_ScanLabResult libmcdriver_scanlab_rtccontext_setlasersignal(LibMCDriver_ScanLab_RTCContext pRTCContext, bool bLaserOn);
+
+/**
 * Read the laser pin input values. Control command, has immediate effect.
 *
 * @param[in] pRTCContext - RTCContext instance.

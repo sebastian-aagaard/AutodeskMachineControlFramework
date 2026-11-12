@@ -657,6 +657,9 @@ public:
 		pConfig->SetStringParameter("ScannerCard/Netmask", trimWhitespace(pUIEnvironment->GetUIProperty(sForm + "card_netmask", "value")));
 		pConfig->SetIntegerParameter("ScannerCard/Port", pUIEnvironment->GetUIPropertyAsInteger(sForm + "card_port", "value"));
 		pConfig->SetIntegerParameter("ScannerCard/Timeout", pUIEnvironment->GetUIPropertyAsInteger(sForm + "card_timeout", "value"));
+		pConfig->SetBoolParameter("ScannerCard/LaserOnSignalLowActive", pUIEnvironment->GetUIPropertyAsBool(sForm + "card_laseronsignallowactive", "value"));
+		pConfig->SetBoolParameter("ScannerCard/Laser1SignalLowActive", pUIEnvironment->GetUIPropertyAsBool(sForm + "card_laser1signallowactive", "value"));
+		pConfig->SetBoolParameter("ScannerCard/LaserModulationOnLaserOn", pUIEnvironment->GetUIPropertyAsBool(sForm + "card_modpinlaseron", "value"));
 
 		const std::pair<const char*, const char*> cardDoubleFields[] = {
 			{ "card_laserondelay", "ScannerCard/LaserOnDelay" },

@@ -1656,6 +1656,24 @@ typedef LibMCDriver_ScanLabResult (*PLibMCDriver_ScanLabRTCContext_DisableOnTheF
 typedef LibMCDriver_ScanLabResult (*PLibMCDriver_ScanLabRTCContext_SetLaserPinOutPtr) (LibMCDriver_ScanLab_RTCContext pRTCContext, bool bLaserOut1, bool bLaserOut2);
 
 /**
+* Routes the laser signal outputs of the card (RTC6 command config_laser_signals). Control command, has immediate effect.
+*
+* @param[in] pRTCContext - RTCContext instance.
+* @param[in] nConfig - Laser signal configuration bitfield.
+* @return error code or 0 (success)
+*/
+typedef LibMCDriver_ScanLabResult (*PLibMCDriver_ScanLabRTCContext_ConfigLaserSignalsPtr) (LibMCDriver_ScanLab_RTCContext pRTCContext, LibMCDriver_ScanLab_uint32 nConfig);
+
+/**
+* Asserts or releases the laser signal of the card (RTC6 commands laser_signal_on/laser_signal_off). Control command, has immediate effect.
+*
+* @param[in] pRTCContext - RTCContext instance.
+* @param[in] bLaserOn - True asserts the laser signal, false releases it.
+* @return error code or 0 (success)
+*/
+typedef LibMCDriver_ScanLabResult (*PLibMCDriver_ScanLabRTCContext_SetLaserSignalPtr) (LibMCDriver_ScanLab_RTCContext pRTCContext, bool bLaserOn);
+
+/**
 * Read the laser pin input values. Control command, has immediate effect.
 *
 * @param[in] pRTCContext - RTCContext instance.
@@ -3383,6 +3401,8 @@ typedef struct {
 	PLibMCDriver_ScanLabRTCContext_InitializeForOIEPtr m_RTCContext_InitializeForOIE;
 	PLibMCDriver_ScanLabRTCContext_DisableOnTheFlyForOIEPtr m_RTCContext_DisableOnTheFlyForOIE;
 	PLibMCDriver_ScanLabRTCContext_SetLaserPinOutPtr m_RTCContext_SetLaserPinOut;
+	PLibMCDriver_ScanLabRTCContext_ConfigLaserSignalsPtr m_RTCContext_ConfigLaserSignals;
+	PLibMCDriver_ScanLabRTCContext_SetLaserSignalPtr m_RTCContext_SetLaserSignal;
 	PLibMCDriver_ScanLabRTCContext_GetLaserPinInPtr m_RTCContext_GetLaserPinIn;
 	PLibMCDriver_ScanLabRTCContext_AddLaserPinOutToListPtr m_RTCContext_AddLaserPinOutToList;
 	PLibMCDriver_ScanLabRTCContext_AddWriteDigitalIOListPtr m_RTCContext_AddWriteDigitalIOList;

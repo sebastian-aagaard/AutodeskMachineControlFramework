@@ -4251,6 +4251,54 @@ LibMCDriver_ScanLabResult libmcdriver_scanlab_rtccontext_disableontheflyforoie(L
 	}
 }
 
+LibMCDriver_ScanLabResult libmcdriver_scanlab_rtccontext_configlasersignals(LibMCDriver_ScanLab_RTCContext pRTCContext, LibMCDriver_ScanLab_uint32 nConfig)
+{
+	IBase* pIBaseClass = (IBase *)pRTCContext;
+
+	try {
+		IRTCContext* pIRTCContext = dynamic_cast<IRTCContext*>(pIBaseClass);
+		if (!pIRTCContext)
+			throw ELibMCDriver_ScanLabInterfaceException(LIBMCDRIVER_SCANLAB_ERROR_INVALIDCAST);
+
+		pIRTCContext->ConfigLaserSignals(nConfig);
+
+		return LIBMCDRIVER_SCANLAB_SUCCESS;
+	}
+	catch (ELibMCDriver_ScanLabInterfaceException & Exception) {
+		return handleLibMCDriver_ScanLabException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCDriver_ScanLabResult libmcdriver_scanlab_rtccontext_setlasersignal(LibMCDriver_ScanLab_RTCContext pRTCContext, bool bLaserOn)
+{
+	IBase* pIBaseClass = (IBase *)pRTCContext;
+
+	try {
+		IRTCContext* pIRTCContext = dynamic_cast<IRTCContext*>(pIBaseClass);
+		if (!pIRTCContext)
+			throw ELibMCDriver_ScanLabInterfaceException(LIBMCDRIVER_SCANLAB_ERROR_INVALIDCAST);
+
+		pIRTCContext->SetLaserSignal(bLaserOn);
+
+		return LIBMCDRIVER_SCANLAB_SUCCESS;
+	}
+	catch (ELibMCDriver_ScanLabInterfaceException & Exception) {
+		return handleLibMCDriver_ScanLabException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 LibMCDriver_ScanLabResult libmcdriver_scanlab_rtccontext_setlaserpinout(LibMCDriver_ScanLab_RTCContext pRTCContext, bool bLaserOut1, bool bLaserOut2)
 {
 	IBase* pIBaseClass = (IBase *)pRTCContext;
@@ -8525,6 +8573,10 @@ LibMCDriver_ScanLabResult LibMCDriver_ScanLab::Impl::LibMCDriver_ScanLab_GetProc
 		*ppProcAddress = (void*) &libmcdriver_scanlab_rtccontext_initializeforoie;
 	if (sProcName == "libmcdriver_scanlab_rtccontext_disableontheflyforoie") 
 		*ppProcAddress = (void*) &libmcdriver_scanlab_rtccontext_disableontheflyforoie;
+	if (sProcName == "libmcdriver_scanlab_rtccontext_configlasersignals") 
+		*ppProcAddress = (void*) &libmcdriver_scanlab_rtccontext_configlasersignals;
+	if (sProcName == "libmcdriver_scanlab_rtccontext_setlasersignal") 
+		*ppProcAddress = (void*) &libmcdriver_scanlab_rtccontext_setlasersignal;
 	if (sProcName == "libmcdriver_scanlab_rtccontext_setlaserpinout") 
 		*ppProcAddress = (void*) &libmcdriver_scanlab_rtccontext_setlaserpinout;
 	if (sProcName == "libmcdriver_scanlab_rtccontext_getlaserpinin") 

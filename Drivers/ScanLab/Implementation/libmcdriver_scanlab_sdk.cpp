@@ -291,6 +291,8 @@ CScanLabSDK::CScanLabSDK(const std::string& sDLLNameUTF8)
 	this->ptr_n_micro_vector_abs = (PScanLabPtr_n_micro_vector_abs)_loadScanLabAddress(hLibrary, "n_micro_vector_abs", false);
 	this->ptr_n_micro_vector_rel = (PScanLabPtr_n_micro_vector_rel)_loadScanLabAddress(hLibrary, "n_micro_vector_rel", false);
 	this->ptr_n_config_laser_signals = (PScanLabPtr_n_config_laser_signals)_loadScanLabAddress(hLibrary, "n_config_laser_signals", false);
+	this->ptr_n_laser_signal_on = (PScanLabPtr_n_laser_signal_on)_loadScanLabAddress(hLibrary, "n_laser_signal_on", false);
+	this->ptr_n_laser_signal_off = (PScanLabPtr_n_laser_signal_off)_loadScanLabAddress(hLibrary, "n_laser_signal_off", false);
 
 	this->ptr_n_get_error = (PScanLabPtr_n_get_error)_loadScanLabAddress(hLibrary, "n_get_error");
 	this->ptr_n_reset_error = (PScanLabPtr_n_reset_error)_loadScanLabAddress(hLibrary, "n_reset_error");
@@ -434,6 +436,8 @@ void CScanLabSDK::resetFunctionPtrs()
 	ptr_n_set_laser_pulses = nullptr;
 	ptr_n_set_standby = nullptr;
 	ptr_n_config_laser_signals = nullptr;
+	ptr_n_laser_signal_on = nullptr;
+	ptr_n_laser_signal_off = nullptr;
 	ptr_n_get_last_error = nullptr;
 	ptr_get_last_error = nullptr;
 	ptr_n_load_program_file = nullptr;
@@ -781,6 +785,28 @@ void CScanLabSDK::n_config_laser_signals(uint32_t nCardNo, uint32_t nConfig)
 		throw ELibMCDriver_ScanLabInterfaceException(LIBMCDRIVER_SCANLAB_ERROR_CALLNOTSUPPORTED, "n_config_laser_signals not supported in this version of the library");
 
 	ptr_n_config_laser_signals(nCardNo, nConfig);
+}
+
+void CScanLabSDK::n_laser_signal_on(uint32_t nCardNo)
+{
+	if (m_pLogJournal.get() != nullptr)
+		m_pLogJournal->logCall("n_laser_signal_on", std::to_string(nCardNo));
+
+	if (ptr_n_laser_signal_on == nullptr)
+		throw ELibMCDriver_ScanLabInterfaceException(LIBMCDRIVER_SCANLAB_ERROR_CALLNOTSUPPORTED, "n_laser_signal_on not supported in this version of the library");
+
+	ptr_n_laser_signal_on(nCardNo);
+}
+
+void CScanLabSDK::n_laser_signal_off(uint32_t nCardNo)
+{
+	if (m_pLogJournal.get() != nullptr)
+		m_pLogJournal->logCall("n_laser_signal_off", std::to_string(nCardNo));
+
+	if (ptr_n_laser_signal_off == nullptr)
+		throw ELibMCDriver_ScanLabInterfaceException(LIBMCDRIVER_SCANLAB_ERROR_CALLNOTSUPPORTED, "n_laser_signal_off not supported in this version of the library");
+
+	ptr_n_laser_signal_off(nCardNo);
 }
 
 uint32_t CScanLabSDK::n_get_last_error(uint32_t nCardNo)

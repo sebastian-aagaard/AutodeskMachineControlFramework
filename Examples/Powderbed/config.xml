@@ -111,6 +111,9 @@
 			<parameter name="port" description="Port" default="16" type="int" configschema="com.autodesk.powderbed" configpath="ScannerCard/Port"/>
 			<parameter name="timeout" description="Connection timeout" default="5000" type="int" configschema="com.autodesk.powderbed" configpath="ScannerCard/Timeout"/>
 			<parameter name="laserondelay" description="Laser On Delay in microseconds" default="100" type="double" configschema="com.autodesk.powderbed" configpath="ScannerCard/LaserOnDelay"/>
+			<parameter name="laseronsignallowactive" description="Laser enable signal polarity (on = signal low active)" default="1" type="bool" configschema="com.autodesk.powderbed" configpath="ScannerCard/LaserOnSignalLowActive"/>
+			<parameter name="laser1signallowactive" description="Laser 1 signal polarity (on = signal low active)" default="1" type="bool" configschema="com.autodesk.powderbed" configpath="ScannerCard/Laser1SignalLowActive"/>
+			<parameter name="modpinlaseron" description="Route the laser pulse modulation to the LASER_ON pin (off: LASER_1 pin)" default="0" type="bool" configschema="com.autodesk.powderbed" configpath="ScannerCard/LaserModulationOnLaserOn"/>
 			<parameter name="laseroffdelay" description="Laser Off Delay in microseconds" default="100" type="double" configschema="com.autodesk.powderbed" configpath="ScannerCard/LaserOffDelay"/>
 			<parameter name="markdelay" description="Mark Delay in microseconds" default="570" type="double" configschema="com.autodesk.powderbed" configpath="ScannerCard/MarkDelay"/>
 			<parameter name="jumpdelay" description="Jump Delay in microseconds" default="1400" type="double" configschema="com.autodesk.powderbed" configpath="ScannerCard/JumpDelay"/>
@@ -286,6 +289,9 @@
 			<derivedparameter name="port" statemachine="main" group="cardconfig" parameter="port"/>
 			<derivedparameter name="timeout" statemachine="main" group="cardconfig" parameter="timeout"/>
 			<derivedparameter name="laserondelay" statemachine="main" group="cardconfig" parameter="laserondelay"/>
+			<derivedparameter name="laseronsignallowactive" statemachine="main" group="cardconfig" parameter="laseronsignallowactive"/>
+			<derivedparameter name="laser1signallowactive" statemachine="main" group="cardconfig" parameter="laser1signallowactive"/>
+			<derivedparameter name="modpinlaseron" statemachine="main" group="cardconfig" parameter="modpinlaseron"/>
 			<derivedparameter name="laseroffdelay" statemachine="main" group="cardconfig" parameter="laseroffdelay"/>
 			<derivedparameter name="markdelay" statemachine="main" group="cardconfig" parameter="markdelay"/>
 			<derivedparameter name="jumpdelay" statemachine="main" group="cardconfig" parameter="jumpdelay"/>
@@ -549,6 +555,9 @@
 					<edit name="card_port" caption="Scanner port" sync:value="main.cardconfig.port"/>
 					<edit name="card_timeout" caption="Scanner connection timeout (ms)" sync:value="main.cardconfig.timeout"/>
 					<edit name="card_laserondelay" caption="Laser on delay (µs)" sync:value="main.cardconfig.laserondelay"/>
+					<switch name="card_laseronsignallowactive" caption="Laser enable signal low active (laser emits when the line is low)" sync:value="main.cardconfig.laseronsignallowactive"/>
+					<switch name="card_laser1signallowactive" caption="Laser 1 signal low active (laser emits when the line is low)" sync:value="main.cardconfig.laser1signallowactive"/>
+					<switch name="card_modpinlaseron" caption="Laser pulse modulation on the LASER_ON pin (off: LASER_1 pin)" sync:value="main.cardconfig.modpinlaseron"/>
 					<edit name="card_laseroffdelay" caption="Laser off delay (µs)" sync:value="main.cardconfig.laseroffdelay"/>
 					<edit name="card_markdelay" caption="Mark delay (µs)" sync:value="main.cardconfig.markdelay"/>
 					<edit name="card_jumpdelay" caption="Jump delay (µs)" sync:value="main.cardconfig.jumpdelay"/>

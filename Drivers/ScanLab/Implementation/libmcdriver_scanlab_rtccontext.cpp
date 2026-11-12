@@ -785,12 +785,26 @@ void CRTCContext::DisableAutoLaserControl()
 }
 
 // Routes the laser signal outputs of the card (RTC6 command config_laser_signals).
-// Bit 0 modulates the LASER_ON pin with the laser pulses (set_laser_pulses): the pin then
-// carries the pulse modulation gated (AND) with the laser-on state, so the single LASER_ON
-// line serves as both the emission gate and the PWM power modulation output.
+// Bit 0 modulates the LASER_ON pin with the laser pulses (set_laser_pulses), bit 1 the LASER_1
+// pin: the routed pin then carries the pulse modulation gated (AND) with the laser signal state,
+// so it serves as both the emission gate and the PWM power modulation output. Which pin is
+// routed is machine wiring, so the decision is left to the caller.
 void CRTCContext::ConfigLaserSignals(const LibMCDriver_ScanLab_uint32 nConfig)
 {
 	m_pScanLabSDK->n_config_laser_signals(m_CardNo, nConfig);
+	m_pScanLabSDK->checkError(m_pScanLabSDK->n_get_last_error(m_CardNo));
+}
+
+// Asserts or releases the laser signal of the card (RTC6 commands laser_signal_on/laser_signal_off).
+// The signal defaults to on after power-up of the card; it gates the emission: while asserted, the
+// card emits the pulse modulation on the routed laser pin, while released it emits the standby
+// modulation only.
+void CRTCContext::SetLaserSignal(const bool bLaserOn)
+{
+	if (bLaserOn)
+		m_pScanLabSDK->n_laser_signal_on(m_CardNo);
+	else
+		m_pScanLabSDK->n_laser_signal_off(m_CardNo);
 	m_pScanLabSDK->checkError(m_pScanLabSDK->n_get_last_error(m_CardNo));
 }
 

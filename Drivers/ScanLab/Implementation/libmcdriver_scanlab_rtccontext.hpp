@@ -399,7 +399,9 @@ public:
 
 	void writeLaserTimingsToCard();
 
-	void ConfigLaserSignals(const LibMCDriver_ScanLab_uint32 nConfig);
+	void ConfigLaserSignals(const LibMCDriver_ScanLab_uint32 nConfig) override;
+
+	void SetLaserSignal(const bool bLaserOn) override;
 
 	LibMCDriver_ScanLab_uint32 GetSerialNumber() override;
 

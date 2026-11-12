@@ -1034,6 +1034,8 @@ public:
 	inline void InitializeForOIE(const CInputVector<LibMCDriver_ScanLab_uint32> & SignalChannelsBuffer, const eOIEOperationMode eOperationMode);
 	inline void DisableOnTheFlyForOIE();
 	inline void SetLaserPinOut(const bool bLaserOut1, const bool bLaserOut2);
+	inline void ConfigLaserSignals(const LibMCDriver_ScanLab_uint32 nConfig);
+	inline void SetLaserSignal(const bool bLaserOn);
 	inline void GetLaserPinIn(bool & bLaserOut1, bool & bLaserOut2);
 	inline void AddLaserPinOutToList(const bool bLaserOut1, const bool bLaserOut2);
 	inline void AddWriteDigitalIOList(const LibMCDriver_ScanLab_uint32 nDigitalOutput);
@@ -1520,6 +1522,8 @@ public:
 		pWrapperTable->m_RTCContext_InitializeForOIE = nullptr;
 		pWrapperTable->m_RTCContext_DisableOnTheFlyForOIE = nullptr;
 		pWrapperTable->m_RTCContext_SetLaserPinOut = nullptr;
+		pWrapperTable->m_RTCContext_ConfigLaserSignals = nullptr;
+		pWrapperTable->m_RTCContext_SetLaserSignal = nullptr;
 		pWrapperTable->m_RTCContext_GetLaserPinIn = nullptr;
 		pWrapperTable->m_RTCContext_AddLaserPinOutToList = nullptr;
 		pWrapperTable->m_RTCContext_AddWriteDigitalIOList = nullptr;
@@ -3089,6 +3093,24 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_RTCContext_SetLaserPinOut == nullptr)
+			return LIBMCDRIVER_SCANLAB_ERROR_COULDNOTFINDLIBRARYEXPORT;
+
+		#ifdef _WIN32
+		pWrapperTable->m_RTCContext_ConfigLaserSignals = (PLibMCDriver_ScanLabRTCContext_ConfigLaserSignalsPtr) GetProcAddress(hLibrary, "libmcdriver_scanlab_rtccontext_configlasersignals");
+		#else // _WIN32
+		pWrapperTable->m_RTCContext_ConfigLaserSignals = (PLibMCDriver_ScanLabRTCContext_ConfigLaserSignalsPtr) dlsym(hLibrary, "libmcdriver_scanlab_rtccontext_configlasersignals");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_RTCContext_ConfigLaserSignals == nullptr)
+			return LIBMCDRIVER_SCANLAB_ERROR_COULDNOTFINDLIBRARYEXPORT;
+
+		#ifdef _WIN32
+		pWrapperTable->m_RTCContext_SetLaserSignal = (PLibMCDriver_ScanLabRTCContext_SetLaserSignalPtr) GetProcAddress(hLibrary, "libmcdriver_scanlab_rtccontext_setlasersignal");
+		#else // _WIN32
+		pWrapperTable->m_RTCContext_SetLaserSignal = (PLibMCDriver_ScanLabRTCContext_SetLaserSignalPtr) dlsym(hLibrary, "libmcdriver_scanlab_rtccontext_setlasersignal");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_RTCContext_SetLaserSignal == nullptr)
 			return LIBMCDRIVER_SCANLAB_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -5090,6 +5112,14 @@ public:
 		
 		eLookupError = (*pLookup)("libmcdriver_scanlab_rtccontext_setlaserpinout", (void**)&(pWrapperTable->m_RTCContext_SetLaserPinOut));
 		if ( (eLookupError != 0) || (pWrapperTable->m_RTCContext_SetLaserPinOut == nullptr) )
+			return LIBMCDRIVER_SCANLAB_ERROR_COULDNOTFINDLIBRARYEXPORT;
+
+		eLookupError = (*pLookup)("libmcdriver_scanlab_rtccontext_configlasersignals", (void**)&(pWrapperTable->m_RTCContext_ConfigLaserSignals));
+		if ( (eLookupError != 0) || (pWrapperTable->m_RTCContext_ConfigLaserSignals == nullptr) )
+			return LIBMCDRIVER_SCANLAB_ERROR_COULDNOTFINDLIBRARYEXPORT;
+
+		eLookupError = (*pLookup)("libmcdriver_scanlab_rtccontext_setlasersignal", (void**)&(pWrapperTable->m_RTCContext_SetLaserSignal));
+		if ( (eLookupError != 0) || (pWrapperTable->m_RTCContext_SetLaserSignal == nullptr) )
 			return LIBMCDRIVER_SCANLAB_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmcdriver_scanlab_rtccontext_getlaserpinin", (void**)&(pWrapperTable->m_RTCContext_GetLaserPinIn));
@@ -7419,6 +7449,24 @@ public:
 	void CRTCContext::SetLaserPinOut(const bool bLaserOut1, const bool bLaserOut2)
 	{
 		CheckError(m_pWrapper->m_WrapperTable.m_RTCContext_SetLaserPinOut(m_pHandle, bLaserOut1, bLaserOut2));
+	}
+
+	/**
+	* CRTCContext::ConfigLaserSignals - Routes the laser signal outputs of the card (RTC6 command config_laser_signals). Control command, has immediate effect.
+	* @param[in] nConfig - Laser signal configuration bitfield.
+	*/
+	void CRTCContext::ConfigLaserSignals(const LibMCDriver_ScanLab_uint32 nConfig)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_RTCContext_ConfigLaserSignals(m_pHandle, nConfig));
+	}
+
+	/**
+	* CRTCContext::SetLaserSignal - Asserts or releases the laser signal of the card (RTC6 commands laser_signal_on/laser_signal_off). Control command, has immediate effect.
+	* @param[in] bLaserOn - True asserts the laser signal, false releases it.
+	*/
+	void CRTCContext::SetLaserSignal(const bool bLaserOn)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_RTCContext_SetLaserSignal(m_pHandle, bLaserOn));
 	}
 	
 	/**

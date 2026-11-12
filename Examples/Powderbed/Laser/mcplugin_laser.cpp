@@ -193,7 +193,31 @@ void InitialiseScanlabDriver(LibMCEnv::PStateEnvironment pStateEnvironment, PDri
 
 		pDriver->SetLaserSignalTimingDefaults(dPulseHalfPeriodInMicroseconds, dPulseLengthInMicroseconds, dStandbyHalfPeriodInMicroseconds, dStandbyLengthInMicroseconds);
 
-		pDriver->ConfigureLaserMode(LibMCDriver_ScanLab::eLaserMode::CO2, LibMCDriver_ScanLab::eLaserPort::LaserPulseModulation, dLaserPowerAt100Percent, false, false, false, false, false, false);
+		// Which line of the card the laser is wired to, and how it is wired, differs between machines, so
+		// all of it is machine settings rather than hardcoded values: "laseronsignallowactive" inverts the
+		// LASER_ON signal (set_laser_control bit 3), "laser1signallowactive" the laser port pin LASER_1
+		// (bit 4), and "modpinlaseron" selects the line that carries the pulse modulation. A laser that
+		// emits while its line is low or floating needs the polarity of that line inverted, otherwise it
+		// stays on whenever the card drives the line into its inactive state.
+		bool bLaserOnSignalLowActive = pStateEnvironment->GetBoolParameter("cardconfig", "laseronsignallowactive");
+		bool bLaser1SignalLowActive = pStateEnvironment->GetBoolParameter("cardconfig", "laser1signallowactive");
+		pStateEnvironment->LogMessage("Laser signal polarity: LASER_ON " + std::string((bLaserOnSignalLowActive) ? "LOW" : "HIGH") +
+			" active, LASER_1 " + std::string((bLaser1SignalLowActive) ? "LOW" : "HIGH") + " active.");
+
+		pDriver->ConfigureLaserMode(LibMCDriver_ScanLab::eLaserMode::CO2, LibMCDriver_ScanLab::eLaserPort::LaserPulseModulation, dLaserPowerAt100Percent, false, false, bLaserOnSignalLowActive, bLaser1SignalLowActive, false, false);
+
+		// Route the pulse modulation onto the laser line this machine is wired to, and release the laser
+		// signal: it gates the modulation (while asserted, the routed pin carries the pulse train), but the
+		// card's power-up default is on - without clearing it here, the laser would emit whenever nothing
+		// else gates the modulation, i.e. permanently. RTC6 config_laser_signals: bit 0 modulates the
+		// LASER_ON pin, bit 1 the LASER_1 pin; the routing is a power-up default too and has to be applied
+		// on every start.
+		if (!pDriver->IsSimulationMode()) {
+			bool bModPinLaserOn = pStateEnvironment->GetBoolParameter("cardconfig", "modpinlaseron");
+			pDriver->GetContext()->ConfigLaserSignals((bModPinLaserOn) ? 1 : 2);
+			pStateEnvironment->LogMessage("Laser pulse modulation routed to " + std::string((bModPinLaserOn) ? "LASER_ON pin." : "LASER_1 pin."));
+			pDriver->GetContext()->SetLaserSignal(false);
+		}
 
 		pStateEnvironment->LogMessage("Configuring delays...");
 		pDriver->ConfigureDelays(dLaserOnDelay, dLaserOffDelay, dMarkDelay, dJumpDelay, dPolygonDelay);
@@ -488,6 +512,7 @@ static void EndPowerMeasurementEmission(PPluginData pPluginData, LibMCEnv::PStat
 				pContext->SetLaserPulsesInMicroSeconds(pStateEnvironment->GetDoubleParameter("lasersignaltiming", "pulsehalfperiod"),
 					pStateEnvironment->GetDoubleParameter("lasersignaltiming", "pulselength"));
 
+				pContext->SetLaserSignal(false);
 				pContext->SetLaserPinOut(false, false);
 			}
 		}
@@ -614,13 +639,14 @@ public:
 			else {
 				auto recordingSettings = ReadScannerRecordingSettings(pStateEnvironment);
 
-				// The laser enable pin is only high while the layer is drawn: with the pin
-				// high the idle standby (tickle) pulses already make the laser emit.
+				// The laser on signal is only asserted while the layer is drawn: while it is active the
+				// idle standby (tickle) pulses already make the laser emit.
 				// DrawLayer / DrawLayerWithRecording block until the card has finished the list.
 				auto pContext = pDriver->GetContext();
 				auto nLeadTime = pStateEnvironment->GetIntegerParameter("lasersignaltiming", "enableleadtime");
 
 				LibMCDriver_ScanLab::PRTCRecording pRecording;
+				pContext->SetLaserSignal(true);
 				pContext->SetLaserPinOut(true, false);
 				pStateEnvironment->SetBoolParameter("lasersignaltiming", "laseronsignal", true);
 				try {
@@ -633,10 +659,12 @@ public:
 						pDriver->DrawLayer(pBuildJob->GetStorageUUID(), nLayerIndex);
 				}
 				catch (...) {
+					pContext->SetLaserSignal(false);
 					pContext->SetLaserPinOut(false, false);
 					pStateEnvironment->SetBoolParameter("lasersignaltiming", "laseronsignal", false);
 					throw;
 				}
+				pContext->SetLaserSignal(false);
 				pContext->SetLaserPinOut(false, false);
 				pStateEnvironment->SetBoolParameter("lasersignaltiming", "laseronsignal", false);
 
@@ -694,6 +722,7 @@ public:
 			}
 			else {
 				auto pContext = pRTCDriver->GetContext();
+				pContext->SetLaserSignal(bLaserOn);
 				pContext->SetLaserPinOut(bLaserOn, false);
 			}
 		}
@@ -710,11 +739,11 @@ public:
  Class definition of CLaserState_PowerMeasurement
 
  Runs a timed manual laser emission for power measurements. On the first pass it applies the requested
- pulse modulation to the card and raises the single laser enable pin (LaserOut1 via set_laser_pin_out);
- with the modulation routed onto the LASER_ON pin (config_laser_signals, set up during laser
- initialisation), the same pin is held high for the duration and carries the emission pulse train, so no
- second pin is involved. Every pass then checks for an early stop request and updates the remaining-time
- parameter until the timer expires, then drops the pin and returns to idle.
+ pulse modulation to the card and asserts the laser signal; with the modulation routed onto the laser
+ line this machine is wired to (config_laser_signals, set up during laser initialisation), that line is
+ gated high for the duration and carries the emission pulse train. Every pass then checks for an early
+ stop request and updates the remaining-time parameter until the timer expires, then releases the signal
+ and returns to idle.
 **************************************************************************************************************************/
 class CLaserState_PowerMeasurement : public virtual CLaserState {
 public:
@@ -802,7 +831,7 @@ private:
 
 		// The CO2 laser's power is pulse-width modulated: the power setting maps to a pulse width fraction
 		// through the calibration table, and the PWM duty cycle multiplies it. The result is written to the
-		// laser pulse timing, which the card emits (modulated) on the LASER_ON pin - see config_laser_signals.
+		// laser pulse timing, which the card emits on the laser pin the modulation is routed to.
 		double dPowerFraction = 1.0;
 		std::string sCardType = pStateEnvironment->GetStringParameter("cardconfig", "cardtype");
 		if (sCardType != "scanlab")
@@ -831,7 +860,9 @@ private:
 			auto pContext = pDriver->GetContext();
 			pContext->SetLaserPulsesInMicroSeconds(dPeriodInMicroSeconds * 0.5, dPulseWidthInMicroSeconds);
 
-			// A single pin arms the emission: while it is high the card emits the pulse modulation on it.
+			// Arming the emission: while the laser signal is asserted, the card emits the pulse modulation
+			// on the routed laser pin.
+			pContext->SetLaserSignal(true);
 			pContext->SetLaserPinOut(true, false);
 		}
 		else {

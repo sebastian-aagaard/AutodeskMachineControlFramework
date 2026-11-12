@@ -1591,6 +1591,23 @@ public:
 	virtual void SetLaserPinOut(const bool bLaserOut1, const bool bLaserOut2) = 0;
 
 	/**
+	* IRTCContext::ConfigLaserSignals - Routes the laser signal outputs of the card (RTC6 command config_laser_signals).
+	* Bit 0 modulates the LASER_ON pin with the laser pulses, bit 1 modulates the LASER_1 pin; with 0 the signals
+	* keep their unmodulated default. Control command, has immediate effect.
+	* @param[in] nConfig - Laser signal configuration bitfield.
+	*/
+	virtual void ConfigLaserSignals(const LibMCDriver_ScanLab_uint32 nConfig) = 0;
+
+	/**
+	* IRTCContext::SetLaserSignal - Asserts or releases the laser signal of the card (RTC6 commands
+	* laser_signal_on/laser_signal_off). The signal defaults to on after power-up of the card. It gates
+	* the emission: while asserted, the card emits the pulse modulation on the routed laser pin, while
+	* released it emits the standby modulation only. Control command, has immediate effect.
+	* @param[in] bLaserOn - True asserts the laser signal, false releases it.
+	*/
+	virtual void SetLaserSignal(const bool bLaserOn) = 0;
+
+	/**
 	* IRTCContext::GetLaserPinIn - Read the laser pin input values. Control command, has immediate effect.
 	* @param[out] bLaserOut1 - Value for Laser In Pin 1
 	* @param[out] bLaserOut2 - Value for Laser In Pin 2
