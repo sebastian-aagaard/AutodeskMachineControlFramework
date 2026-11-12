@@ -36,6 +36,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "amc_parametertype.hpp"
 
+#include "RapidJSON/document.h"
+
+#include <cstring>
+
 namespace AMC {
 
 
@@ -248,14 +252,15 @@ namespace AMC {
 
 
 
-	CToolpathLayerData::CToolpathLayerData(Lib3MF::PToolpath pToolpath, Lib3MF::PToolpathLayerReader p3MFLayer, double dUnits, int32_t nZValue, const std::string& sDebugName, std::vector<PToolpathCustomSegmentAttribute> customSegmentAttributes, const std::set<std::string>& excludedPartUUIDs)
-		: m_dUnits (dUnits), m_nZValue (nZValue), m_sDebugName (sDebugName), m_CustomSegmentAttributes (customSegmentAttributes)
+	CToolpathLayerData::CToolpathLayerData(Lib3MF::PToolpath pToolpath, Lib3MF::PToolpathLayerReader p3MFLayer, uint32_t nLayerIndex, double dUnits, int32_t nZValue, const std::string& sDebugName, std::vector<PToolpathCustomSegmentAttribute> customSegmentAttributes, const std::set<std::string>& excludedPartUUIDs)
+		: m_dUnits (dUnits), m_nZValue (nZValue), m_sDebugName (sDebugName), m_CustomSegmentAttributes (customSegmentAttributes), m_nLayerIndex (nLayerIndex), m_n3MFSegmentCount (0)
 	{
 		LibMCAssertNotNull(p3MFLayer.get());
 		LibMCAssertNotNull(pToolpath.get());
 
 		m_sUUID = p3MFLayer->GetLayerDataUUID();
 		uint32_t nSegmentCount = p3MFLayer->GetSegmentCount();
+		m_n3MFSegmentCount = nSegmentCount;
 		uint32_t nTotalPointCount = 0;
 
 		for (auto& attribute : m_CustomSegmentAttributes) {
@@ -488,7 +493,8 @@ namespace AMC {
 
 			m_CustomData.push_back(std::make_pair (std::make_pair (sNameSpace, sRootName), sXMLString));
 		}
-		
+
+		applySegmentLevelOverrideFactorsFromLayerPart(pToolpath);
 
 	}
 
@@ -1139,6 +1145,270 @@ namespace AMC {
 
 			uint32_t nSubTableElementCount = bRepeatFirstPoint ? nListedPointCount : (uint32_t)pointFactors.size();
 			storeSubinterpolationTable(segment, nFactorIndex, nSubTableElementCount, bRepeatFirstPoint, nonLinearCounts, nonLinearValues);
+		}
+	}
+
+
+	// Reads a modifier factor attribute of a <segment> element out of the layer viewable JSON. Factors are
+	// normalized scales and MUST be between 0 and 1.
+	static bool readSegmentFactorAttribute(const rapidjson::Value& node, const char* const pszAttributeName, double& dFactorValue)
+	{
+		for (auto iter = node.MemberBegin(); iter != node.MemberEnd(); iter++) {
+			if ((!iter->name.IsString()) || (!iter->value.IsNumber()))
+				continue;
+
+			if (std::strcmp(iter->name.GetString(), pszAttributeName) != 0)
+				continue;
+
+			dFactorValue = iter->value.GetDouble();
+			if ((dFactorValue < 0.0) || (dFactorValue > 1.0))
+				throw ELibMCCustomException(LIBMC_ERROR_INVALIDTOOLPATHMODIFIERFACTOR, pszAttributeName);
+
+			return true;
+		}
+
+		return false;
+	}
+
+
+	// Identifies a <segment> element in the layer viewable JSON. A segment names its geometry type and
+	// references the profile and the part it is built with.
+	static bool isSegmentNodeInLayerJSON(const rapidjson::Value& node)
+	{
+		static const char* const segmentTypeNames[] = { "loop", "polyline", "hatch", "polyline3d", "polyline6d", "delay", "sync" };
+
+		bool bHasProfileReference = false;
+		bool bHasPartReference = false;
+
+		for (auto iter = node.MemberBegin(); iter != node.MemberEnd(); iter++) {
+			if (!iter->name.IsString())
+				continue;
+
+			const char* const pszName = iter->name.GetString();
+			if (std::strcmp(pszName, "type") == 0) {
+				if (!iter->value.IsString())
+					continue;
+
+				for (const char* const pszSegmentTypeName : segmentTypeNames) {
+					if (std::strcmp(iter->value.GetString(), pszSegmentTypeName) == 0)
+						return true;
+				}
+			}
+			else if (std::strcmp(pszName, "profileid") == 0)
+				bHasProfileReference = true;
+			else if (std::strcmp(pszName, "partid") == 0)
+				bHasPartReference = true;
+		}
+
+		return bHasProfileReference && bHasPartReference;
+	}
+
+
+	void CToolpathLayerData::parseSegmentLevelFactorsFromLayerJSON(const std::string& sLayerViewableJSON, std::vector<sToolpathSegmentFactorAttributes>& segmentLevelFactors, bool& bHasAnyFactorAttribute)
+	{
+		static const char* const constantFactorNames[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT] = { "f", "g", "h", "e" };
+		static const char* const startFactorNames[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT] = { "f1", "g1", "h1", "e1" };
+		static const char* const endFactorNames[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT] = { "f2", "g2", "h2", "e2" };
+
+		segmentLevelFactors.clear();
+		bHasAnyFactorAttribute = false;
+
+		if (sLayerViewableJSON.empty())
+			return;
+
+		rapidjson::Document document;
+		document.Parse(sLayerViewableJSON.c_str());
+		if (document.HasParseError() || !document.IsObject())
+			return;
+
+		// lib3mf converts the layer XML into nested objects and nests each repeated child element into the
+		// previous one, so the graph has to be walked depth-first in key order to visit the segments in the
+		// document order of the layer part. The walk is iterative, because hatch and point elements nest
+		// into each other and a layer may contain a million of them.
+		std::vector<const rapidjson::Value*> pendingNodes;
+		pendingNodes.push_back(&document);
+
+		try {
+			while (!pendingNodes.empty()) {
+				const rapidjson::Value* pNode = pendingNodes.back();
+				pendingNodes.pop_back();
+
+				if (isSegmentNodeInLayerJSON(*pNode)) {
+					sToolpathSegmentFactorAttributes segmentFactors;
+
+					for (uint32_t nFactorIndex = 0; nFactorIndex < TOOLPATHSEGMENTOVERRIDEFACTORCOUNT; nFactorIndex++) {
+						const bool bHasConstantFactor = readSegmentFactorAttribute(*pNode, constantFactorNames[nFactorIndex], segmentFactors.m_dConstantFactor[nFactorIndex]);
+						segmentFactors.m_bHasConstantFactor[nFactorIndex] = bHasConstantFactor;
+
+						double dStartLinearFactor = 0.0;
+						double dEndLinearFactor = 0.0;
+						bool bHasStartLinearFactor = readSegmentFactorAttribute(*pNode, startFactorNames[nFactorIndex], dStartLinearFactor);
+						bool bHasEndLinearFactor = readSegmentFactorAttribute(*pNode, endFactorNames[nFactorIndex], dEndLinearFactor);
+
+						// A linear factor is only complete with both of its values. Incomplete pairs are
+						// ignored, just as lib3mf ignores everything it does not understand on a segment.
+						segmentFactors.m_bHasLinearFactor[nFactorIndex] = bHasStartLinearFactor && bHasEndLinearFactor;
+						segmentFactors.m_dStartLinearFactor[nFactorIndex] = dStartLinearFactor;
+						segmentFactors.m_dEndLinearFactor[nFactorIndex] = dEndLinearFactor;
+
+						if (bHasConstantFactor || bHasStartLinearFactor || bHasEndLinearFactor)
+							bHasAnyFactorAttribute = true;
+					}
+
+					segmentLevelFactors.push_back(segmentFactors);
+				}
+
+				// The children are pushed in reverse key order so that they come off the stack in document
+				// order.
+				for (auto iter = pNode->MemberEnd(); iter != pNode->MemberBegin();) {
+					iter--;
+					if (iter->value.IsObject())
+						pendingNodes.push_back(&iter->value);
+				}
+			}
+		}
+		catch (...) {
+			segmentLevelFactors.clear();
+			throw;
+		}
+	}
+
+
+	// Applies the modifier factors of the <segment> elements of the layer part. Reading the layer part is
+	// only necessary for layers whose profiles declare modifiers at all.
+	void CToolpathLayerData::applySegmentLevelOverrideFactorsFromLayerPart(Lib3MF::PToolpath pToolpath)
+	{
+		if (pToolpath.get() == nullptr)
+			return;
+
+		bool bDeclaresModifiers = false;
+		for (auto& profilePair : m_ProfileMap) {
+			if ((profilePair.second.get() != nullptr) && (profilePair.second->getModifierCount() > 0)) {
+				bDeclaresModifiers = true;
+				break;
+			}
+		}
+
+		if (!bDeclaresModifiers)
+			return;
+
+		std::vector<sToolpathSegmentFactorAttributes> segmentLevelFactors;
+		bool bHasAnyFactorAttribute = false;
+
+		// The layer viewable carries the attributes of the layer part as they are written, including the ones
+		// on the segment elements, which the typed layer reader does not report.
+		parseSegmentLevelFactorsFromLayerJSON(pToolpath->GetLayerViewable(m_nLayerIndex)->GetJSONString(), segmentLevelFactors, bHasAnyFactorAttribute);
+
+		if (segmentLevelFactors.size() != m_n3MFSegmentCount) {
+			// The segments could not be matched to the layer part. Factors that were found but cannot be
+			// assigned MUST NOT be silently dropped, as that would run the laser at the nominal value.
+			if (bHasAnyFactorAttribute)
+				throw ELibMCCustomException(LIBMC_ERROR_INTERNALERROR, m_sDebugName + "/segment modifier factors");
+
+			return;
+		}
+
+		applySegmentLevelOverrideFactors(segmentLevelFactors);
+	}
+
+
+	void CToolpathLayerData::applySegmentLevelOverrideFactors(const std::vector<sToolpathSegmentFactorAttributes>& segmentLevelFactors)
+	{
+		static const uint32_t factorFlags[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT] = {
+			TOOLPATHSEGMENTOVERRIDEFACTOR_F, TOOLPATHSEGMENTOVERRIDEFACTOR_G, TOOLPATHSEGMENTOVERRIDEFACTOR_H, TOOLPATHSEGMENTOVERRIDEFACTOR_E };
+
+		static const Lib3MF::eToolpathProfileModificationFactor factorTypes[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT] = {
+			Lib3MF::eToolpathProfileModificationFactor::FactorF, Lib3MF::eToolpathProfileModificationFactor::FactorG,
+			Lib3MF::eToolpathProfileModificationFactor::FactorH, Lib3MF::eToolpathProfileModificationFactor::FactorE };
+
+		for (auto& segment : m_Segments) {
+			if (segment.m_3MFSegmentIndex >= segmentLevelFactors.size())
+				continue;
+
+			if (segment.m_PointCount == 0)
+				continue;
+
+			const sToolpathSegmentFactorAttributes& segmentFactors = segmentLevelFactors.at(segment.m_3MFSegmentIndex);
+			PToolpathLayerProfile pProfile = retrieveProfileData(getRegisteredUUID(segment.m_ProfileUUID));
+			if (pProfile.get() == nullptr)
+				continue;
+
+			for (uint32_t nFactorIndex = 0; nFactorIndex < TOOLPATHSEGMENTOVERRIDEFACTORCOUNT; nFactorIndex++) {
+				if ((segment.m_HasOverrideFactors & factorFlags[nFactorIndex]) != 0)
+					continue;
+
+				// A factor only has an effect when the profile of the segment maps it to an attribute.
+				LibMCEnv::eToolpathProfileModificationType modificationType = LibMCEnv::eToolpathProfileModificationType::NoModification;
+				for (uint32_t nModifierIndex = 0; nModifierIndex < pProfile->getModifierCount(); nModifierIndex++) {
+					std::string sNameSpace;
+					std::string sValueName;
+					LibMCEnv::eToolpathProfileModificationType eModifierType;
+					LibMCEnv::eToolpathProfileModificationFactor eModifierFactor;
+					double dMinValue = 0.0;
+					double dMaxValue = 0.0;
+
+					pProfile->getModifierInformationByIndex(nModifierIndex, sNameSpace, sValueName, eModifierType, eModifierFactor, dMinValue, dMaxValue);
+					if (eModifierFactor == convertModificationFactor(factorTypes[nFactorIndex])) {
+						modificationType = eModifierType;
+						break;
+					}
+				}
+
+				if (modificationType == LibMCEnv::eToolpathProfileModificationType::NoModification)
+					continue;
+
+				const bool bIsConstantModification = (modificationType == LibMCEnv::eToolpathProfileModificationType::ConstantModification);
+
+				double dStartFactor = 0.0;
+				double dEndFactor = 0.0;
+				if (segmentFactors.m_bHasConstantFactor[nFactorIndex]) {
+					dStartFactor = segmentFactors.m_dConstantFactor[nFactorIndex];
+					dEndFactor = segmentFactors.m_dConstantFactor[nFactorIndex];
+				}
+				else if (segmentFactors.m_bHasLinearFactor[nFactorIndex] && (!bIsConstantModification)) {
+					// A linear modifier MAY carry one less-granular value instead of a start/end pair, but a
+					// constant modifier MUST NOT be ramped.
+					dStartFactor = segmentFactors.m_dStartLinearFactor[nFactorIndex];
+					dEndFactor = segmentFactors.m_dEndLinearFactor[nFactorIndex];
+				}
+				else
+					continue;
+
+				applySegmentLevelFactorToSegment(segment, nFactorIndex, dStartFactor, dEndFactor);
+				segment.m_HasOverrideFactors |= factorFlags[nFactorIndex];
+			}
+		}
+	}
+
+
+	void CToolpathLayerData::applySegmentLevelFactorToSegment(sToolpathLayerSegment& segment, uint32_t nFactorIndex, double dStartFactor, double dEndFactor)
+	{
+		if (segment.m_Type == LibMCEnv::eToolpathSegmentType::Hatch) {
+
+			// Both factors of a hatch are stored on its two end points.
+			size_t nPointIndex = segment.m_PointStartIndex;
+			for (uint32_t nHatchIndex = 0; nHatchIndex < segment.m_PointCount / 2; nHatchIndex++) {
+				m_StartOverrideFactors.at(nPointIndex).m_dFactors[nFactorIndex] = dStartFactor;
+				m_OverrideFactors.at(nPointIndex).m_dFactors[nFactorIndex] = dStartFactor;
+				nPointIndex++;
+
+				m_StartOverrideFactors.at(nPointIndex).m_dFactors[nFactorIndex] = dEndFactor;
+				m_OverrideFactors.at(nPointIndex).m_dFactors[nFactorIndex] = dEndFactor;
+				nPointIndex++;
+			}
+
+		}
+		else {
+
+			// The factors of a point apply to the line that ends in it. The closing line of a loop takes the
+			// factors of the first point, which are identical for a segment level factor.
+			size_t nPointIndex = segment.m_PointStartIndex;
+			for (uint32_t nPointIndexInSegment = 0; nPointIndexInSegment < segment.m_PointCount; nPointIndexInSegment++) {
+				m_StartOverrideFactors.at(nPointIndex).m_dFactors[nFactorIndex] = dStartFactor;
+				m_OverrideFactors.at(nPointIndex).m_dFactors[nFactorIndex] = dEndFactor;
+				nPointIndex++;
+			}
+
 		}
 	}
 
