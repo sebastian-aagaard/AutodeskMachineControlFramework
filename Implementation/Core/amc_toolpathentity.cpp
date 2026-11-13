@@ -189,7 +189,7 @@ namespace AMC {
 		cacheLayerContent_Unsafe(nLayerIndex, p3MFLayerData->GetSegmentCount() > 0);
 
 		auto nZValue = m_pToolpath->GetLayerZMax(nLayerIndex);
-		return std::make_shared<CToolpathLayerData> (m_pToolpath, p3MFLayerData, nLayerIndex, dUnits, nZValue, m_sDebugName, m_CustomSegmentAttributes, excludedPartUUIDs);
+		return std::make_shared<CToolpathLayerData> (m_pToolpath, p3MFLayerData, dUnits, nZValue, m_sDebugName, m_CustomSegmentAttributes, excludedPartUUIDs);
 	}
 
 	void CToolpathEntity::cacheLayerContent_Unsafe(uint32_t nLayerIndex, bool bHasSegments)

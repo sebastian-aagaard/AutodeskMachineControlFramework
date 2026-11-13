@@ -75,29 +75,6 @@ namespace AMC {
 		double m_dFactors[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT];
 	} sToolpathLayerOverride;
 
-	// Modifier factor attributes found on a <segment> element. Lib3MF's typed layer reader only reports
-	// the factors of the geometry elements; a producer that carries them on the segment element itself
-	// (which means one less-granular value for every line of the segment) is picked up from the raw
-	// layer part. See CToolpathLayerData::applySegmentLevelOverrideFactors.
-	typedef struct _sToolpathSegmentFactorAttributes {
-		bool m_bHasConstantFactor[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT];
-		double m_dConstantFactor[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT];
-		bool m_bHasLinearFactor[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT];
-		double m_dStartLinearFactor[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT];
-		double m_dEndLinearFactor[TOOLPATHSEGMENTOVERRIDEFACTORCOUNT];
-
-		_sToolpathSegmentFactorAttributes()
-		{
-			for (uint32_t nFactorIndex = 0; nFactorIndex < TOOLPATHSEGMENTOVERRIDEFACTORCOUNT; nFactorIndex++) {
-				m_bHasConstantFactor[nFactorIndex] = false;
-				m_dConstantFactor[nFactorIndex] = 0.0;
-				m_bHasLinearFactor[nFactorIndex] = false;
-				m_dStartLinearFactor[nFactorIndex] = 0.0;
-				m_dEndLinearFactor[nFactorIndex] = 0.0;
-			}
-		}
-	} sToolpathSegmentFactorAttributes;
-
 	typedef struct _sToolpathLayerSubinterpolationEntry {
 		uint32_t m_nOffset;
 		uint32_t m_nCount;
@@ -219,9 +196,6 @@ namespace AMC {
 		std::map<std::pair<std::string, std::string>, PToolpathCustomSegmentAttribute> m_CustomSegmentAttributeMap;
 		std::vector<PToolpathCustomSegmentAttribute> m_CustomSegmentAttributes;
 
-		uint32_t m_nLayerIndex;
-		uint32_t m_n3MFSegmentCount;
-
 		uint32_t registerUUID(const std::string& sUUID);
 		std::string getRegisteredUUID(const uint32_t nID);
 
@@ -230,16 +204,6 @@ namespace AMC {
 
 		void readHatchOverrideFactors(Lib3MF::PToolpathLayerReader p3MFLayer, sToolpathLayerSegment& segment);
 		void readPointOverrideFactors(Lib3MF::PToolpathLayerReader p3MFLayer, sToolpathLayerSegment& segment, bool bIsLoop);
-
-		// Applies the modifier factors of the <segment> elements to the segments whose geometry elements
-		// carry no factor of a modifier their profile declares. The layer part is only read for layers whose
-		// profiles declare modifiers.
-		void applySegmentLevelOverrideFactorsFromLayerPart(Lib3MF::PToolpath pToolpath);
-
-		// Stores a factor that is declared once for a whole segment on the points that make up its lines.
-		// Hatch segments store both factors on the end points of each hatch, polyline and loop segments ramp
-		// every line that ends in one of their points from the start factor to the end factor.
-		void applySegmentLevelFactorToSegment(sToolpathLayerSegment& segment, uint32_t nFactorIndex, double dStartFactor, double dEndFactor);
 
 		// Validates and stores the sub-interpolation values of one factor, one table entry per element
 		// (hatch or point). Loops repeat the entry of the first point for the explicitly stored closing point.
@@ -251,7 +215,7 @@ namespace AMC {
 	public:
 
 		// Segments whose build item UUID (normalized) is contained in excludedPartUUIDs are skipped entirely.
-		CToolpathLayerData(Lib3MF::PToolpath pToolpath, Lib3MF::PToolpathLayerReader p3MFLayer, uint32_t nLayerIndex, double dUnits, int32_t nZValue, const std::string & sDebugName, std::vector<PToolpathCustomSegmentAttribute> customSegmentAttributes, const std::set<std::string>& excludedPartUUIDs);
+		CToolpathLayerData(Lib3MF::PToolpath pToolpath, Lib3MF::PToolpathLayerReader p3MFLayer, double dUnits, int32_t nZValue, const std::string & sDebugName, std::vector<PToolpathCustomSegmentAttribute> customSegmentAttributes, const std::set<std::string>& excludedPartUUIDs);
 		virtual ~CToolpathLayerData();		
 
 		std::string getUUID ();
@@ -292,18 +256,6 @@ namespace AMC {
 		void calculateExtents(int32_t & nMinX, int32_t & nMinY, int32_t & nMaxX, int32_t & nMaxY);
 
 		bool segmentHasOverrideFactors(uint32_t nSegmentIndex, LibMCEnv::eToolpathProfileModificationFactor eOverrideFactor);
-
-		// Applies factor attributes that a producer carries on the <segment> elements instead of on the
-		// geometry elements of the segment. Such a factor is the less-granular form of the modifier factor
-		// of every line of the segment. Factors that are already stored are kept. The vector is indexed by
-		// the 3MF segment index; segments that are not contained in it are left untouched.
-		void applySegmentLevelOverrideFactors(const std::vector<sToolpathSegmentFactorAttributes>& segmentLevelFactors);
-
-		// Extracts the modifier factor attributes of the <segment> elements of a layer from the layer
-		// viewable JSON of lib3mf. The result is ordered by the 3MF segment index and stays empty when the
-		// segments cannot be unambiguously identified in the JSON. bHasAnyFactorAttribute reports whether any
-		// segment carries a factor, which distinguishes an unmodified layer from an unparseable one.
-		static void parseSegmentLevelFactorsFromLayerJSON(const std::string& sLayerViewableJSON, std::vector<sToolpathSegmentFactorAttributes>& segmentLevelFactors, bool& bHasAnyFactorAttribute);
 
 		void getHatchModificationFactors (uint32_t nSegmentIndex, uint32_t nHatchIndex, LibMCEnv::eToolpathProfileModificationFactor eModificationFactor, double & dFactor1, double & dFactor2);
 
